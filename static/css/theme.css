@@ -11,6 +11,8 @@ html[data-bs-theme="light"] {
   --bs-primary-rgb: 227, 19, 55;
   --bs-secondary: var(--hive-grey);
   --bs-body-bg: var(--hive-lightgrey);
+  --bs-secondary-bg: #f8f9fa; /* used by bg-body-secondary */
+  --bs-tertiary-bg: #f1f3f5;  /* used by bg-body-tertiary (navbar/footer) */
   --bs-body-color: var(--hive-black);
   /* Links use RGB vars in Bootstrap 5.3 */
   --bs-link-color-rgb: 227, 19, 55; /* Hive red */
@@ -25,6 +27,31 @@ html[data-bs-theme="light"] {
   --bs-code-color: var(--hive-red);
 }
 
+/* Dark theme variable overrides */
+html[data-bs-theme="dark"] {
+  /* Keep brand red, adjust neutrals for dark */
+  --hive-red: #E31337;
+  --hive-black: #e6edf3; /* light text */
+  --hive-grey: #2d333b;
+  --hive-lightgrey: #0d1117; /* body background */
+
+  /* Bootstrap mappings */
+  --bs-primary: var(--hive-red);
+  --bs-primary-rgb: 227, 19, 55;
+  --bs-secondary: var(--hive-grey);
+  --bs-body-bg: var(--hive-lightgrey);
+  --bs-secondary-bg: #161b22; /* darker panel */
+  --bs-tertiary-bg: #0f141a;  /* navbar/footer bg */
+  --bs-body-color: var(--hive-black);
+  --bs-link-color-rgb: 227, 19, 55;
+  --bs-link-color: var(--hive-red);
+  --bs-link-hover-color: color-mix(in srgb, var(--hive-red), white 15%);
+  --bs-link-hover-color-rgb: 255, 90, 110; /* rough */
+  --bs-focus-ring-color: rgba(227, 19, 55, 0.35);
+  --bs-border-color: #30363d;
+  --bs-code-color: #ff7b72; /* accent for inline code */
+}
+
 /* Fallback for browsers without color-mix */
 @supports not (color: color-mix(in srgb, red, black)) {
   :root {
@@ -35,6 +62,12 @@ html[data-bs-theme="light"] {
 /* Navbar tweaks */
 .navbar {
   --bs-navbar-color: rgba(33, 37, 41, 0.8);
+  --bs-navbar-hover-color: var(--hive-black);
+  --bs-navbar-brand-color: var(--hive-black);
+  --bs-navbar-brand-hover-color: var(--hive-red);
+}
+html[data-bs-theme="dark"] .navbar {
+  --bs-navbar-color: rgba(230, 237, 243, 0.8);
   --bs-navbar-hover-color: var(--hive-black);
   --bs-navbar-brand-color: var(--hive-black);
   --bs-navbar-brand-hover-color: var(--hive-red);
@@ -58,6 +91,12 @@ html[data-bs-theme="light"] {
   --bs-btn-active-bg: color-mix(in srgb, var(--hive-red), #000 15%);
   --bs-btn-active-border-color: color-mix(in srgb, var(--hive-red), #000 15%);
 }
+html[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-hover-bg: color-mix(in srgb, var(--hive-red), white 8%);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--hive-red), white 8%);
+  --bs-btn-active-bg: color-mix(in srgb, var(--hive-red), white 12%);
+  --bs-btn-active-border-color: color-mix(in srgb, var(--hive-red), white 12%);
+}
 @supports not (color: color-mix(in srgb, red, black)) {
   .btn-primary {
     --bs-btn-hover-bg: #cb1231;
@@ -69,6 +108,12 @@ html[data-bs-theme="light"] {
 
 /* Outline primary matches Hive red */
 .btn-outline-primary {
+  --bs-btn-color: var(--hive-red);
+  --bs-btn-border-color: var(--hive-red);
+  --bs-btn-hover-bg: var(--hive-red);
+  --bs-btn-hover-border-color: var(--hive-red);
+}
+html[data-bs-theme="dark"] .btn-outline-primary {
   --bs-btn-color: var(--hive-red);
   --bs-btn-border-color: var(--hive-red);
   --bs-btn-hover-bg: var(--hive-red);
@@ -167,4 +212,67 @@ a:hover {
 
 .meta-right {
   flex: 0 0 auto;
+}
+
+/* --- Code & Syntax Highlighting (Pygments via codehilite) --- */
+/* Inline code */
+code {
+  background: #f1f3f5;
+  color: var(--bs-body-color);
+  padding: .2rem .35rem;
+  border-radius: 4px;
+}
+
+/* Code blocks */
+.codehilite {
+  background: #f8f9fa;
+  color: #212529;
+  border-radius: 6px;
+  overflow: auto;
+  border: 1px solid var(--bs-border-color);
+}
+.codehilite pre {
+  margin: 0;
+  padding: .75rem 1rem;
+}
+pre code { /* prevent double-styling inside blocks */
+  background: transparent;
+  padding: 0;
+}
+
+/* Common token colors (minimal set) */
+.codehilite .k { color: #005cc5; font-weight: 600; } /* Keyword */
+.codehilite .o { color: #d73a49; } /* Operator */
+.codehilite .c, .codehilite .cm, .codehilite .c1, .codehilite .cs, .codehilite .cp { color: #6a737d; font-style: italic; } /* Comments */
+.codehilite .na, .codehilite .nc, .codehilite .nd, .codehilite .nn { color: #6f42c1; }
+.codehilite .nb, .codehilite .m { color: #005cc5; }
+.codehilite .nf { color: #6f42c1; }
+.codehilite .nt { color: #22863a; }
+.codehilite .nv, .codehilite .no { color: #e36209; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb, .codehilite .sc, .codehilite .sd, .codehilite .se, .codehilite .sh, .codehilite .si, .codehilite .sr, .codehilite .ss, .codehilite .sx { color: #032f62; }
+.codehilite .p { color: inherit; }
+
+/* Dark theme adjustments */
+html[data-bs-theme="dark"] code {
+  background: #2a2f36;
+  color: #e6edf3;
+}
+html[data-bs-theme="dark"] .codehilite {
+  background: #1e2329;
+  color: #e6edf3;
+  border-color: #2d333b;
+}
+html[data-bs-theme="dark"] .codehilite .c,
+html[data-bs-theme="dark"] .codehilite .cm,
+html[data-bs-theme="dark"] .codehilite .c1,
+html[data-bs-theme="dark"] .codehilite .cs,
+html[data-bs-theme="dark"] .codehilite .cp { color: #8b949e; font-style: italic; }
+
+/* Responsive images inside post content */
+.card-text img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: .5rem 0;
+  border-radius: 6px;
 }

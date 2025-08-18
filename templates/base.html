@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-bs-theme="light">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
@@ -9,6 +9,17 @@
     <meta name="author" content="thecrazygm">
     <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}">
     <title>Hive Micro - {% block title %}{% endblock %}</title>
+    <!-- Initialize theme early to avoid flash -->
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');
+                var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var theme = (saved === 'dark' || saved === 'light') ? saved : (prefersDark ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-bs-theme', theme);
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap"
@@ -51,13 +62,18 @@
                         <a class="nav-link" href="/profile">View Profile</a>
                     </li>
                 </ul>
-                {% if session.username %}
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-center gap-2">
+                    <li class="nav-item">
+                        <button id="themeToggleBtn" class="btn btn-sm btn-outline-secondary" type="button" title="Toggle theme">
+                            <i id="themeToggleIcon" class="bi"></i>
+                        </button>
+                    </li>
+                    {% if session.username %}
                     <li class="nav-item">
                         <a class="nav-link" href="/logout">Logout</a>
                     </li>
+                    {% endif %}
                 </ul>
-                {% endif %}
             </div>
         </div>
     </nav>
@@ -77,6 +93,26 @@
         document.addEventListener('DOMContentLoaded', () => {
             const el = document.getElementById('footer-status');
             const mentionBadge = document.getElementById('nav-mentions-count');
+            // Theme toggle
+            const themeBtn = document.getElementById('themeToggleBtn');
+            const themeIcon = document.getElementById('themeToggleIcon');
+            function applyThemeIcon(theme) {
+                if (!themeIcon) return;
+                themeIcon.className = 'bi ' + (theme === 'dark' ? 'bi-sun' : 'bi-moon-stars');
+            }
+            function setTheme(theme) {
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                try { localStorage.setItem('theme', theme); } catch (e) { }
+                applyThemeIcon(theme);
+            }
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            applyThemeIcon(currentTheme);
+            if (themeBtn) {
+                themeBtn.addEventListener('click', () => {
+                    const next = (document.documentElement.getAttribute('data-bs-theme') === 'dark') ? 'light' : 'dark';
+                    setTheme(next);
+                });
+            }
             async function refresh() {
                 if (!el) return;
                 try {

@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from bleach import clean
+from bleach import clean, linkify
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_caching import Cache
 from flask_sqlalchemy import SQLAlchemy
@@ -63,8 +63,24 @@ def markdown_render(content: str) -> str:
         txt = re.sub(r"(^|\s)@([a-z0-9\-.]+)", _mention_sub, txt)
         txt = re.sub(r"(^|\s)#([a-z0-9\-]+)", _tag_sub, txt)
 
-        # Render Markdown (basic)
-        html = markdown(txt)
+        # Render Markdown with common extensions
+        html = markdown(
+            txt,
+            extensions=[
+                'extra',          # tables, fenced_code, etc.
+                'sane_lists',
+                'admonition',
+                'codehilite',     # syntax highlighting via Pygments
+            ],
+            extension_configs={
+                'codehilite': {
+                    'guess_lang': False,
+                    'noclasses': False,  # prefer CSS classes for theming
+                    'pygments_style': 'default',
+                },
+            },
+            output_format='html5',
+        )
 
         # Sanitize HTML
         allowed_tags = {
@@ -75,22 +91,47 @@ def markdown_render(content: str) -> str:
             "blockquote",
             "em",
             "strong",
+            "del",
+            "hr",
             "ul",
             "ol",
             "li",
-            "hr",
+            "a",
             "h1",
             "h2",
             "h3",
             "h4",
             "h5",
             "h6",
-            "a",
+            "div",
+            "span",
+            "sup",
+            "abbr",
+            "dl",
+            "dt",
+            "dd",
+            "table",
+            "thead",
+            "tbody",
+            "caption",
+            "tr",
+            "th",
+            "td",
+            "img",
         }
         allowed_attrs = {
-            "a": ["href", "title"],
+            'a': ['href', 'title', 'rel', 'target', 'id', 'name'],
+            'code': ['class'],
+            'div': ['class'],
+            'span': ['class', 'id'],
+            'li': ['id'],
+            'sup': ['id'],
+            'abbr': ['title'],
+            'th': ['colspan','rowspan','align'],
+            'td': ['colspan','rowspan','align'],
+            'img': ['src', 'alt', 'title', 'width', 'height', 'loading'],
         }
-        allowed_protocols = ["http", "https", "mailto"]
+        allowed_protocols = ['http', 'https', 'mailto']
         safe = clean(
             html,
             tags=allowed_tags,
@@ -98,6 +139,18 @@ def markdown_render(content: str) -> str:
             protocols=allowed_protocols,
             strip=True,
         )
+        # Auto-link bare URLs safely
+        try:
+            safe = linkify(safe)
+        except Exception:
+            pass
+
+        # Ensure images are lazy-loaded by default
+        try:
+            import re as _re
+            safe = _re.sub(r'<img(?![^>]*\bloading=)([^>]*)>', r'<img loading="lazy"\1>', safe)
+        except Exception:
+            pass
         return safe
     except Exception:
         # Fallback: escape everything via bleach

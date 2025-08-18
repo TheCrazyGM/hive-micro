@@ -1,5 +1,5 @@
 [project]
-name = "keychain_login"
+name = "hive-micro"
 version = "0.1.0"
 description = "Very Crude Flask Keychain Login"
 readme = "README.md"
@@ -11,5 +11,6 @@ dependencies = [
     "flask-sqlalchemy>=3.1.1",
     "hive-nectar>=0.0.7",
     "markdown>=3.8.2",
+    "pygments>=2.18.0",
     "python-dotenv>=1.1.1",
 ]
