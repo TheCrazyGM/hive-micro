@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}@{{ username }}{% endblock %}
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-md-8" style="max-width: 700px;">
+      <div class="card mb-3">
+        {% if profile.cover_image %}
+          <img src="{{ profile.cover_image }}" class="card-img-top" alt="Cover image" style="max-height: 220px; object-fit: cover;">
+        {% endif %}
+        <div class="card-body d-flex">
+          <div class="me-3">
+            {% if profile.profile_image %}
+              <img src="{{ profile.profile_image }}" alt="Avatar" class="rounded-circle" width="72" height="72" style="object-fit: cover;">
+            {% else %}
+              <div class="rounded-circle bg-secondary" style="width:72px; height:72px;"></div>
+            {% endif %}
+          </div>
+          <div>
+            <h3 class="card-title mb-1">{{ profile.name or username }}</h3>
+            <div class="text-muted mb-2">@{{ username }}</div>
+            {% if profile.about %}
+              <p class="card-text">{{ profile.about }}</p>
+            {% endif %}
+            <div class="d-flex gap-3 text-muted" style="font-size: 0.95rem;">
+              {% if profile.website %}
+                <div>
+                  <span class="me-1">🔗</span>
+                  <a href="{{ profile.website }}" target="_blank" rel="noopener">{{ profile.website }}</a>
+                </div>
+              {% endif %}
+              {% if profile.location %}
+                <div><span class="me-1">📍</span>{{ profile.location }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion" id="rawMeta">
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingRaw">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRaw" aria-expanded="false" aria-controls="collapseRaw">
+              View raw profile JSON
+            </button>
+          </h2>
+          <div id="collapseRaw" class="accordion-collapse collapse" aria-labelledby="headingRaw" data-bs-parent="#rawMeta">
+            <div class="accordion-body">
+              <pre class="mb-0"><code>{{ raw | tojson(indent=2) }}</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

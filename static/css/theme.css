@@ -1,0 +1,170 @@
+:root,
+html[data-bs-theme="light"] {
+  /* Hive brand palette */
+  --hive-red: #E31337;
+  --hive-black: #212529; /* Bootstrap default dark text */
+  --hive-grey: #e7e7f1;
+  --hive-lightgrey: #f0f0f8;
+
+  /* Map to Bootstrap CSS variables */
+  --bs-primary: var(--hive-red);
+  --bs-primary-rgb: 227, 19, 55;
+  --bs-secondary: var(--hive-grey);
+  --bs-body-bg: var(--hive-lightgrey);
+  --bs-body-color: var(--hive-black);
+  /* Links use RGB vars in Bootstrap 5.3 */
+  --bs-link-color-rgb: 227, 19, 55; /* Hive red */
+  --bs-link-color: var(--hive-red);
+  /* Hover: slightly darker red; color-mix supported in modern browsers */
+  --bs-link-hover-color: color-mix(in srgb, var(--hive-red), #000 15%);
+  --bs-link-hover-color-rgb: 200, 16, 47; /* fallback approximate */
+  --bs-focus-ring-color: rgba(227, 19, 55, 0.25);
+
+  /* Optional accents */
+  --bs-border-color: #dee2e6;
+  --bs-code-color: var(--hive-red);
+}
+
+/* Fallback for browsers without color-mix */
+@supports not (color: color-mix(in srgb, red, black)) {
+  :root {
+    --bs-link-hover-color: #c8102f; /* close darker red */
+  }
+}
+
+/* Navbar tweaks */
+.navbar {
+  --bs-navbar-color: rgba(33, 37, 41, 0.8);
+  --bs-navbar-hover-color: var(--hive-black);
+  --bs-navbar-brand-color: var(--hive-black);
+  --bs-navbar-brand-hover-color: var(--hive-red);
+}
+
+.navbar .nav-link.active,
+.navbar .nav-link:focus,
+.navbar .nav-link:hover {
+  color: var(--hive-red);
+}
+.navbar .nav-link.active {
+  border-bottom: 2px solid var(--hive-red);
+}
+
+/* Primary button uses Hive red */
+.btn-primary {
+  --bs-btn-bg: var(--hive-red);
+  --bs-btn-border-color: var(--hive-red);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--hive-red), #000 10%);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--hive-red), #000 10%);
+  --bs-btn-active-bg: color-mix(in srgb, var(--hive-red), #000 15%);
+  --bs-btn-active-border-color: color-mix(in srgb, var(--hive-red), #000 15%);
+}
+@supports not (color: color-mix(in srgb, red, black)) {
+  .btn-primary {
+    --bs-btn-hover-bg: #cb1231;
+    --bs-btn-hover-border-color: #cb1231;
+    --bs-btn-active-bg: #b4102b;
+    --bs-btn-active-border-color: #b4102b;
+  }
+}
+
+/* Outline primary matches Hive red */
+.btn-outline-primary {
+  --bs-btn-color: var(--hive-red);
+  --bs-btn-border-color: var(--hive-red);
+  --bs-btn-hover-bg: var(--hive-red);
+  --bs-btn-hover-border-color: var(--hive-red);
+}
+
+/* Badges */
+.badge.text-bg-primary {
+  background-color: var(--hive-red) !important;
+}
+
+/* Cards and footer adopt body bg subtly */
+.card {
+  border-radius: 0.6rem;
+}
+
+/* Utility classes for brand colors if needed */
+.bg-hive-red { background-color: var(--hive-red) !important; }
+.text-hive-red { color: var(--hive-red) !important; }
+.bg-hive-light { background-color: var(--hive-lightgrey) !important; }
+.bg-hive-grey { background-color: var(--hive-grey) !important; }
+
+/* Links */
+a {
+  color: var(--hive-red);
+}
+a:visited {
+  color: var(--hive-red);
+}
+a:hover {
+  color: var(--bs-link-hover-color);
+  text-decoration-color: var(--hive-red);
+}
+
+/* Form controls focus ring in Hive red */
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: var(--hive-red);
+  box-shadow: 0 0 0 .25rem var(--bs-focus-ring-color);
+}
+
+/* Checkbox / radio colors */
+.form-check-input:checked {
+  background-color: var(--hive-red);
+  border-color: var(--hive-red);
+}
+.form-check-input {
+  accent-color: var(--hive-red);
+}
+
+/* Pagination active item */
+.pagination .page-item.active .page-link {
+  background-color: var(--hive-red);
+  border-color: var(--hive-red);
+}
+.pagination .page-link {
+  color: var(--hive-red);
+}
+
+/* Post/Feed layout niceties */
+.post-meta {
+  font-size: 0.8rem;
+  color: var(--bs-secondary-color);
+  gap: .25rem; /* tighter than gap-2 */
+}
+.post-meta a {
+  color: var(--bs-secondary-color);
+}
+.post-meta a:hover {
+  color: var(--bs-link-hover-color);
+  text-decoration: underline;
+}
+.post-meta code {
+  color: var(--bs-secondary-color);
+  word-break: break-all;
+}
+.reply-indicator {
+  color: var(--bs-secondary-color);
+}
+
+/* Keep long trx ids to a single line with ellipsis */
+.trx-hash {
+  display: inline-block;
+  max-width: 40ch; /* roughly fits within meta line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Ensure the left meta column can shrink/truncate in flex */
+.meta-left {
+  min-width: 0;
+}
+
+.meta-right {
+  flex: 0 0 auto;
+}
