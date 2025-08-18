@@ -217,7 +217,7 @@ a:hover {
 /* --- Code & Syntax Highlighting (Pygments via codehilite) --- */
 /* Inline code */
 code {
-  background: #f1f3f5;
+  background: #f8f9fa;
   color: var(--bs-body-color);
   padding: .2rem .35rem;
   border-radius: 4px;
@@ -230,6 +230,9 @@ code {
   border-radius: 6px;
   overflow: auto;
   border: 1px solid var(--bs-border-color);
+}
+.codehilite .hll { /* remove highlight line background */
+  background: transparent !important;
 }
 .codehilite pre {
   margin: 0;
@@ -254,13 +257,16 @@ pre code { /* prevent double-styling inside blocks */
 
 /* Dark theme adjustments */
 html[data-bs-theme="dark"] code {
-  background: #2a2f36;
+  background: #1e2329;
   color: #e6edf3;
 }
 html[data-bs-theme="dark"] .codehilite {
   background: #1e2329;
   color: #e6edf3;
   border-color: #2d333b;
+}
+html[data-bs-theme="dark"] .codehilite .hll {
+  background: transparent !important;
 }
 html[data-bs-theme="dark"] .codehilite .c,
 html[data-bs-theme="dark"] .codehilite .cm,
