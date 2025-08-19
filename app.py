@@ -210,6 +210,7 @@ def api_tags_trending():
     items = [{"tag": k, "count": v} for k, v in top]
     return jsonify({"items": items, "count": len(items)})
 
+
 # --- Models ---
 class Message(db.Model):
     __tablename__ = "messages"

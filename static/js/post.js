@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const replyAuthor = params.get('author');
   const notice = document.getElementById('replyNotice');
   const preview = document.getElementById('replyPreview');
-  
+
   function escapeHTML(s) {
     return String(s)
       .replace(/&/g, '&amp;')
