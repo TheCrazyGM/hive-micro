@@ -17,6 +17,25 @@ document.addEventListener("DOMContentLoaded", () => {
   let loading = false;
   let latestTopTs = null; // most recent item timestamp currently shown
 
+  // ---- Persisted preferences (localStorage) ----
+  const LS_FOLLOWING_KEY = 'hive.followingOnly';
+  function loadFollowingPref() {
+    try {
+      const v = localStorage.getItem(LS_FOLLOWING_KEY);
+      const on = v === '1' || v === 'true';
+      followingToggle.checked = !!on;
+    } catch (_) {
+      // ignore storage errors
+    }
+  }
+  function saveFollowingPref() {
+    try {
+      localStorage.setItem(LS_FOLLOWING_KEY, followingToggle.checked ? '1' : '0');
+    } catch (_) {
+      // ignore storage errors
+    }
+  }
+
   function escapeHTML(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -305,12 +324,15 @@ document.addEventListener("DOMContentLoaded", () => {
   loadMoreBtn.addEventListener("click", () => loadFeed(false));
   followingToggle.addEventListener("change", () => {
     console.debug('[feed] followingToggle changed', { checked: followingToggle.checked });
+    saveFollowingPref();
     loadFeed(true);
     refreshStatus();
   });
 
   // initial load
   renderActiveTagIndicator();
+  // initialize following toggle from storage BEFORE first load
+  loadFollowingPref();
   loadFeed(true);
   loadTrendingTags();
   refreshStatus();
