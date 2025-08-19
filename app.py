@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from bleach import clean, linkify
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for, abort
 from flask_caching import Cache
 from flask_sqlalchemy import SQLAlchemy
 from markdown import markdown
@@ -895,3 +895,43 @@ if __name__ == "__main__":
     # Start background watcher
     start_block_watcher()
     app.run(debug=True, port=8000)
+
+# --- Error handlers ---
+@app.errorhandler(401)
+def handle_401(error):
+    return render_template("401.html"), 401
+
+
+@app.errorhandler(403)
+def handle_403(error):
+    return render_template("403.html"), 403
+
+
+@app.errorhandler(404)
+def handle_404(error):
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(500)
+def handle_500(error):
+    return render_template("500.html"), 500
+
+
+# Optional: simple routes to preview error pages (guarded by env var)
+if os.environ.get("ENABLE_ERROR_ROUTES", "1") == "1":
+    @app.route("/error/401")
+    def _error_401():
+        abort(401)
+
+    @app.route("/error/403")
+    def _error_403():
+        abort(403)
+
+    @app.route("/error/404")
+    def _error_404():
+        abort(404)
+
+    @app.route("/error/500")
+    def _error_500():
+        # raise an exception to trigger 500 handler
+        raise RuntimeError("Test 500 error page")

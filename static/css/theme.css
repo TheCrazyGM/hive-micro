@@ -84,16 +84,22 @@ html[data-bs-theme="dark"] .navbar {
 
 /* Primary button uses Hive red */
 .btn-primary {
+  --bs-btn-color: #fff;
   --bs-btn-bg: var(--hive-red);
   --bs-btn-border-color: var(--hive-red);
+  --bs-btn-hover-color: #fff;
   --bs-btn-hover-bg: color-mix(in srgb, var(--hive-red), #000 10%);
   --bs-btn-hover-border-color: color-mix(in srgb, var(--hive-red), #000 10%);
+  --bs-btn-active-color: #fff;
   --bs-btn-active-bg: color-mix(in srgb, var(--hive-red), #000 15%);
   --bs-btn-active-border-color: color-mix(in srgb, var(--hive-red), #000 15%);
 }
 html[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
   --bs-btn-hover-bg: color-mix(in srgb, var(--hive-red), white 8%);
   --bs-btn-hover-border-color: color-mix(in srgb, var(--hive-red), white 8%);
+  --bs-btn-active-color: #fff;
   --bs-btn-active-bg: color-mix(in srgb, var(--hive-red), white 12%);
   --bs-btn-active-border-color: color-mix(in srgb, var(--hive-red), white 12%);
 }
@@ -112,12 +118,14 @@ html[data-bs-theme="dark"] .btn-primary {
   --bs-btn-border-color: var(--hive-red);
   --bs-btn-hover-bg: var(--hive-red);
   --bs-btn-hover-border-color: var(--hive-red);
+  --bs-btn-hover-color: #fff;
 }
 html[data-bs-theme="dark"] .btn-outline-primary {
   --bs-btn-color: var(--hive-red);
   --bs-btn-border-color: var(--hive-red);
   --bs-btn-hover-bg: var(--hive-red);
   --bs-btn-hover-border-color: var(--hive-red);
+  --bs-btn-hover-color: #fff;
 }
 
 /* Badges */
@@ -136,14 +144,14 @@ html[data-bs-theme="dark"] .btn-outline-primary {
 .bg-hive-light { background-color: var(--hive-lightgrey) !important; }
 .bg-hive-grey { background-color: var(--hive-grey) !important; }
 
-/* Links */
-a {
+/* Links (do not override button anchors) */
+a:not(.btn) {
   color: var(--hive-red);
 }
-a:visited {
+a:not(.btn):visited {
   color: var(--hive-red);
 }
-a:hover {
+a:not(.btn):hover {
   color: var(--bs-link-hover-color);
   text-decoration-color: var(--hive-red);
 }
