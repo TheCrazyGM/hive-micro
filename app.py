@@ -5,7 +5,16 @@ import time
 from datetime import datetime, timezone
 
 from bleach import clean, linkify
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for, abort
+from flask import (
+    Flask,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_caching import Cache
 from flask_sqlalchemy import SQLAlchemy
 from markdown import markdown
@@ -67,19 +76,19 @@ def markdown_render(content: str) -> str:
         html = markdown(
             txt,
             extensions=[
-                'extra',          # tables, fenced_code, etc.
-                'sane_lists',
-                'admonition',
-                'codehilite',     # syntax highlighting via Pygments
+                "extra",  # tables, fenced_code, etc.
+                "sane_lists",
+                "admonition",
+                "codehilite",  # syntax highlighting via Pygments
             ],
             extension_configs={
-                'codehilite': {
-                    'guess_lang': False,
-                    'noclasses': False,  # prefer CSS classes for theming
-                    'pygments_style': 'default',
+                "codehilite": {
+                    "guess_lang": False,
+                    "noclasses": False,  # prefer CSS classes for theming
+                    "pygments_style": "default",
                 },
             },
-            output_format='html5',
+            output_format="html5",
         )
 
         # Sanitize HTML
@@ -120,18 +129,18 @@ def markdown_render(content: str) -> str:
             "img",
         }
         allowed_attrs = {
-            'a': ['href', 'title', 'rel', 'target', 'id', 'name'],
-            'code': ['class'],
-            'div': ['class'],
-            'span': ['class', 'id'],
-            'li': ['id'],
-            'sup': ['id'],
-            'abbr': ['title'],
-            'th': ['colspan','rowspan','align'],
-            'td': ['colspan','rowspan','align'],
-            'img': ['src', 'alt', 'title', 'width', 'height', 'loading'],
+            "a": ["href", "title", "rel", "target", "id", "name"],
+            "code": ["class"],
+            "div": ["class"],
+            "span": ["class", "id"],
+            "li": ["id"],
+            "sup": ["id"],
+            "abbr": ["title"],
+            "th": ["colspan", "rowspan", "align"],
+            "td": ["colspan", "rowspan", "align"],
+            "img": ["src", "alt", "title", "width", "height", "loading"],
         }
-        allowed_protocols = ['http', 'https', 'mailto']
+        allowed_protocols = ["http", "https", "mailto"]
         safe = clean(
             html,
             tags=allowed_tags,
@@ -148,7 +157,10 @@ def markdown_render(content: str) -> str:
         # Ensure images are lazy-loaded by default
         try:
             import re as _re
-            safe = _re.sub(r'<img(?![^>]*\bloading=)([^>]*)>', r'<img loading="lazy"\1>', safe)
+
+            safe = _re.sub(
+                r"<img(?![^>]*\bloading=)([^>]*)>", r'<img loading="lazy"\1>', safe
+            )
         except Exception:
             pass
         return safe
@@ -941,6 +953,7 @@ if __name__ == "__main__":
     start_block_watcher()
     app.run(debug=True, port=8000)
 
+
 # --- Error handlers ---
 @app.errorhandler(401)
 def handle_401(error):
@@ -964,6 +977,7 @@ def handle_500(error):
 
 # Optional: simple routes to preview error pages (guarded by env var)
 if os.environ.get("ENABLE_ERROR_ROUTES", "1") == "1":
+
     @app.route("/error/401")
     def _error_401():
         abort(401)

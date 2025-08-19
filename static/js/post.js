@@ -114,7 +114,6 @@ document.addEventListener("DOMContentLoaded", function () {
       content: content,
       mentions: mentions,
       reply_to: replyTo,
-      attachments: [],
       tags: tags,
     };
 
