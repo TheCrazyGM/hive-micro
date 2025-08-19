@@ -8,6 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const showNewBtn = document.getElementById('showNewPostsBtn');
   const dismissNewBtn = document.getElementById('dismissNewPostsBtn');
   const navFeedBadge = document.getElementById('nav-feed-new-count');
+  const trendingList = document.getElementById('trendingTagsList');
+  const refreshTrendingBtn = document.getElementById('refreshTrendingBtn');
   const urlParams = new URLSearchParams(window.location.search);
   let currentTag = urlParams.get('tag');
 
@@ -22,6 +24,32 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  async function loadTrendingTags() {
+    if (!trendingList) return;
+    try {
+      trendingList.innerHTML = '<li class="list-group-item text-muted">Loading…</li>';
+      const p = new URLSearchParams();
+      p.set('limit', '15');
+      const res = await fetch(`/api/v1/tags/trending?${p.toString()}`);
+      const data = await res.json();
+      const items = data.items || [];
+      if (!items.length) {
+        trendingList.innerHTML = '<li class="list-group-item text-muted">No trending tags</li>';
+        return;
+      }
+      trendingList.innerHTML = '';
+      for (const it of items) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        const tag = String(it.tag || '').toLowerCase();
+        li.innerHTML = `<a href="/feed?tag=${encodeURIComponent(tag)}">#${escapeHTML(tag)}</a><span class="badge text-bg-secondary">${it.count || 0}</span>`;
+        trendingList.appendChild(li);
+      }
+    } catch (e) {
+      trendingList.innerHTML = '<li class="list-group-item text-danger">Failed to load</li>';
+    }
   }
 
   function linkify(text) {
@@ -270,6 +298,10 @@ document.addEventListener("DOMContentLoaded", () => {
     dismissNewBtn.addEventListener('click', () => updateNewUI(0));
   }
 
+  if (refreshTrendingBtn) {
+    refreshTrendingBtn.addEventListener('click', () => loadTrendingTags());
+  }
+
   loadMoreBtn.addEventListener("click", () => loadFeed(false));
   followingToggle.addEventListener("change", () => {
     console.debug('[feed] followingToggle changed', { checked: followingToggle.checked });
@@ -280,8 +312,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // initial load
   renderActiveTagIndicator();
   loadFeed(true);
+  loadTrendingTags();
   refreshStatus();
   // poll for new posts every 20s
   setInterval(pollNewCount, 20000);
+  // refresh trending tags every 60s
+  setInterval(loadTrendingTags, 60000);
 })
 ;

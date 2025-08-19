@@ -90,7 +90,6 @@ def markdown_render(content: str) -> str:
             },
             output_format="html5",
         )
-
         # Sanitize HTML
         allowed_tags = {
             "p",
@@ -171,6 +170,45 @@ def markdown_render(content: str) -> str:
         except Exception:
             return ""
 
+
+@app.route("/api/v1/tags/trending")
+def api_tags_trending():
+    """Return trending tags from recent messages.
+    Query params:
+    - window: number of most recent rows to scan (default 500)
+    - limit: maximum number of tags to return (default 10)
+    """
+    try:
+        window = max(50, min(int(request.args.get("window", 500)), 5000))
+    except Exception:
+        window = 500
+    try:
+        limit = max(1, min(int(request.args.get("limit", 10)), 50))
+    except Exception:
+        limit = 10
+
+    # Get recent messages by timestamp desc limited to `window`
+    q = Message.query.order_by(Message.timestamp.desc()).limit(window)
+    rows = q.all()
+    counts: dict[str, int] = {}
+    for m in rows:
+        try:
+            if not m.tags:
+                continue
+            tg = json.loads(m.tags)
+            if isinstance(tg, list):
+                for t in tg:
+                    key = str(t).strip().lower()
+                    if not key:
+                        continue
+                    counts[key] = counts.get(key, 0) + 1
+        except Exception:
+            continue
+
+    # Sort by count desc then tag asc for stability
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+    items = [{"tag": k, "count": v} for k, v in top]
+    return jsonify({"items": items, "count": len(items)})
 
 # --- Models ---
 class Message(db.Model):
