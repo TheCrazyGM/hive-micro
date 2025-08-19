@@ -620,6 +620,51 @@ def api_timeline():
     return jsonify({"items": items, "count": len(items)})
 
 
+# --- API: New posts count since timestamp ---
+@app.route("/api/v1/timeline/new_count")
+def api_timeline_new_count():
+    """Return count of posts newer than 'since' timestamp.
+    Query params:
+    - since: ISO8601 timestamp (required)
+    - following: '1' to restrict to authors the logged-in user follows
+    - tag: filter to posts containing a given tag
+    """
+    since = request.args.get("since")
+    if not since:
+        return jsonify({"count": 0}), 400
+    try:
+        dt = datetime.fromisoformat(since)
+    except Exception:
+        return jsonify({"count": 0}), 400
+
+    following_flag = request.args.get("following", "0") == "1"
+    tag_filter = request.args.get("tag")
+
+    q = Message.query.filter(Message.timestamp > dt)
+
+    if following_flag and session.get("username"):
+        flw = _get_following_usernames(session["username"]) or set()
+        if flw:
+            q = q.filter(Message.author.in_(list(flw)))
+        else:
+            q = q.filter(db.text("0"))
+    elif following_flag and not session.get("username"):
+        # No user -> no following filter
+        pass
+
+    if tag_filter:
+        like_pattern = f'%"{tag_filter.lower()}"%'
+        q = q.filter(Message.tags.like(like_pattern))
+
+    cnt = q.count()
+    latest = (
+        q.order_by(Message.timestamp.desc()).first().timestamp.isoformat()
+        if cnt > 0
+        else None
+    )
+    return jsonify({"count": cnt, "latest": latest})
+
+
 # --- API: Single post and its replies ---
 @app.route("/api/v1/post/<trx_id>")
 def api_post(trx_id: str):

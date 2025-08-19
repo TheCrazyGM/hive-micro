@@ -10,6 +10,15 @@
           <label class="form-check-label" for="followingToggle">Following only</label>
         </div>
       </div>
+      <div id="newPostsBanner" class="alert alert-primary d-none py-2 px-3 d-flex justify-content-between align-items-center">
+        <div>
+          <strong id="newPostsCount">0</strong> new posts available
+        </div>
+        <div class="d-flex gap-2">
+          <button id="showNewPostsBtn" class="btn btn-sm btn-primary">Show new posts</button>
+          <button id="dismissNewPostsBtn" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+        </div>
+      </div>
       <div id="feed-container"></div>
       <div class="text-center my-3">
         <button id="loadMoreBtn" class="btn btn-outline-secondary">Load more</button>

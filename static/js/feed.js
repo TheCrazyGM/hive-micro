@@ -3,11 +3,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadMoreBtn = document.getElementById("loadMoreBtn");
   const followingToggle = document.getElementById("followingToggle");
   const statusEl = document.getElementById("footer-status");
+  const newBanner = document.getElementById('newPostsBanner');
+  const newCountEl = document.getElementById('newPostsCount');
+  const showNewBtn = document.getElementById('showNewPostsBtn');
+  const dismissNewBtn = document.getElementById('dismissNewPostsBtn');
+  const navFeedBadge = document.getElementById('nav-feed-new-count');
   const urlParams = new URLSearchParams(window.location.search);
   let currentTag = urlParams.get('tag');
 
   let cursor = null; // ISO string to paginate before
   let loading = false;
+  let latestTopTs = null; // most recent item timestamp currently shown
 
   function escapeHTML(s) {
     return String(s)
@@ -191,6 +197,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(`/api/v1/timeline?${params.toString()}`);
       const data = await res.json();
       const items = data.items || [];
+      if (reset && items.length > 0) {
+        latestTopTs = items[0].timestamp;
+      }
       for (const it of items) {
         const card = renderItem(it);
         feedContainer.appendChild(card);
@@ -208,6 +217,59 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateNewUI(count) {
+    // Banner
+    if (newBanner && newCountEl) {
+      if (count > 0) {
+        newCountEl.textContent = count;
+        newBanner.classList.remove('d-none');
+      } else {
+        newBanner.classList.add('d-none');
+      }
+    }
+    // Navbar badge
+    if (navFeedBadge) {
+      if (count > 0) {
+        navFeedBadge.textContent = count;
+        navFeedBadge.classList.remove('d-none');
+        navFeedBadge.className = 'badge text-bg-primary';
+      } else {
+        navFeedBadge.textContent = '0';
+        navFeedBadge.classList.add('d-none');
+        navFeedBadge.className = 'badge text-bg-secondary d-none';
+      }
+    }
+  }
+
+  async function pollNewCount() {
+    // If we don't yet have a top timestamp, nothing to compare against
+    if (!latestTopTs) return;
+    try {
+      const p = new URLSearchParams();
+      p.set('since', latestTopTs);
+      if (followingToggle.checked) p.set('following', '1');
+      if (currentTag) p.set('tag', currentTag);
+      const r = await fetch(`/api/v1/timeline/new_count?${p.toString()}`);
+      if (!r.ok) throw new Error('bad');
+      const d = await r.json();
+      updateNewUI(d.count || 0);
+    } catch (e) {
+      // On error, hide banner but keep badge state unchanged
+      updateNewUI(0);
+    }
+  }
+
+  if (showNewBtn) {
+    showNewBtn.addEventListener('click', async () => {
+      // Reload feed from top
+      await loadFeed(true);
+      updateNewUI(0);
+    });
+  }
+  if (dismissNewBtn) {
+    dismissNewBtn.addEventListener('click', () => updateNewUI(0));
+  }
+
   loadMoreBtn.addEventListener("click", () => loadFeed(false));
   followingToggle.addEventListener("change", () => {
     console.debug('[feed] followingToggle changed', { checked: followingToggle.checked });
@@ -219,4 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderActiveTagIndicator();
   loadFeed(true);
   refreshStatus();
-});
+  // poll for new posts every 20s
+  setInterval(pollNewCount, 20000);
+})
+;
