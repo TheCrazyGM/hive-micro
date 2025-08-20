@@ -285,7 +285,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       console.debug('[feed] timeline response', { status: res.status, count: data.count, items: (data.items||[]).length });
       if (statusEl) {
-        statusEl.textContent = `app: ${data.app_id} · messages: ${data.messages} · last block: ${data.last_block}`;
+        statusEl.textContent = `messages: ${data.messages} · last block: ${data.last_block}`;
       }
     } catch (e) {
       if (statusEl) {
