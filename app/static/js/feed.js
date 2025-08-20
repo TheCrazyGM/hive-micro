@@ -47,8 +47,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadTrendingTags() {
     if (!trendingList) return;
+    // If list already has content, avoid flicker: dim while refreshing.
+    const state = trendingList.getAttribute('data-state') || '';
+    const hasRendered = state === 'ready' || state === 'empty';
     try {
-      trendingList.innerHTML = '<li class="list-group-item text-muted">Loading…</li>';
+      if (hasRendered) {
+        trendingList.style.transition = 'opacity .25s ease';
+        trendingList.classList.add('opacity-50');
+      } else {
+        trendingList.innerHTML = '<li class="list-group-item text-muted">Loading…</li>';
+        trendingList.setAttribute('data-state', 'placeholder');
+      }
       const p = new URLSearchParams();
       p.set('limit', '15');
       const res = await fetch(`/api/v1/tags/trending?${p.toString()}`);
@@ -56,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const items = data.items || [];
       if (!items.length) {
         trendingList.innerHTML = '<li class="list-group-item text-muted">No trending tags</li>';
+        trendingList.setAttribute('data-state', 'empty');
+        trendingList.classList.remove('opacity-50');
         return;
       }
       trendingList.innerHTML = '';
@@ -66,8 +77,15 @@ document.addEventListener("DOMContentLoaded", () => {
         li.innerHTML = `<a href="/feed?tag=${encodeURIComponent(tag)}">#${escapeHTML(tag)}</a><span class="badge text-bg-secondary">${it.count || 0}</span>`;
         trendingList.appendChild(li);
       }
+      trendingList.setAttribute('data-state', 'ready');
+      trendingList.classList.remove('opacity-50');
     } catch (e) {
-      trendingList.innerHTML = '<li class="list-group-item text-danger">Failed to load</li>';
+      // On error, keep existing content to avoid flicker; if nothing rendered yet, show error once.
+      if (!hasRendered) {
+        trendingList.innerHTML = '<li class="list-group-item text-danger">Failed to load</li>';
+        trendingList.setAttribute('data-state', 'empty');
+      }
+      trendingList.classList.remove('opacity-50');
     }
   }
 

@@ -251,6 +251,19 @@ pre code { /* prevent double-styling inside blocks */
   padding: 0;
 }
 
+/* Plain pre/code blocks (used for raw JSON panes) */
+.pre-plain {
+  background: transparent !important;
+  color: inherit;
+  border: 0;
+  padding: .75rem 0;
+}
+.pre-plain code {
+  background: transparent !important;
+  color: inherit;
+  padding: 0;
+}
+
 /* Common token colors (minimal set) */
 .codehilite .k { color: #005cc5; font-weight: 600; } /* Keyword */
 .codehilite .o { color: #d73a49; } /* Operator */
