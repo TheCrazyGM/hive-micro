@@ -29,10 +29,11 @@ def _to_naive_utc(dt: datetime) -> datetime:
 
 
 def markdown_render(content: str) -> str:
-    """Render user content as sanitized HTML.
+    """Render user content as sanitized HTML (minimal subset).
     - Convert simple @mentions and #tags to links before Markdown.
-    - Render with Python-Markdown.
-    - Sanitize with Bleach allowing a safe subset of tags/attrs.
+    - Render with Python-Markdown using minimal features (no tables/fences/admonitions).
+    - Sanitize with Bleach allowing only basic inline formatting, links, images,
+      code (inline/pre), and blockquotes. No headings, lists, tables, or complex blocks.
     """
     try:
         txt = content or ""
@@ -50,13 +51,13 @@ def markdown_render(content: str) -> str:
         txt = re.sub(r"(^|\s)@([a-z0-9\-.]+)", _mention_sub, txt)
         txt = re.sub(r"(^|\s)#([a-z0-9\-]+)", _tag_sub, txt)
 
-        # Render Markdown with common extensions
+        # Render Markdown with minimal extensions
+        # We avoid 'extra' (tables/fenced code), 'admonition', and other heavy features.
         html = markdown(
             txt,
             extensions=[
-                "extra",  # tables, fenced_code, etc.
-                "sane_lists",
-                "admonition",
+                "fenced_code",
+                "nl2br",
                 "codehilite",  # syntax highlighting via Pygments
             ],
             extension_configs={
@@ -72,50 +73,19 @@ def markdown_render(content: str) -> str:
         allowed_tags = {
             "p",
             "br",
-            "pre",
-            "code",
-            "blockquote",
             "em",
             "strong",
-            "del",
-            "hr",
-            "ul",
-            "ol",
-            "li",
+            "code",
+            "pre",
+            "blockquote",
             "a",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-            "div",
-            "span",
-            "sup",
-            "abbr",
-            "dl",
-            "dt",
-            "dd",
-            "table",
-            "thead",
-            "tbody",
-            "caption",
-            "tr",
-            "th",
-            "td",
             "img",
         }
         allowed_attrs = {
-            "a": ["href", "title", "rel", "target", "id", "name"],
+            "a": ["href", "title", "rel", "target"],
             "code": ["class"],
-            "div": ["class"],
-            "span": ["class", "id"],
-            "li": ["id"],
-            "sup": ["id"],
-            "abbr": ["title"],
-            "th": ["colspan", "rowspan", "align"],
-            "td": ["colspan", "rowspan", "align"],
-            "img": ["src", "alt", "title", "width", "height", "loading"],
+            # Disallow width/height overrides; keep loading for lazy images
+            "img": ["src", "alt", "title", "loading"],
         }
         allowed_protocols = ["http", "https", "mailto"]
         safe = clean(
@@ -138,6 +108,21 @@ def markdown_render(content: str) -> str:
             safe = _re.sub(
                 r"<img(?![^>]*\bloading=)([^>]*)>", r'<img loading="lazy"\1>', safe
             )
+        except Exception:
+            pass
+
+        # Enforce rel on all anchors for safety
+        try:
+            import re as _re2
+
+            def _add_rel(m):
+                tag_open = m.group(0)
+                # If rel already present, leave as-is; otherwise add safe defaults
+                if " rel=" in tag_open:
+                    return tag_open
+                return tag_open[:-1] + ' rel="nofollow noopener noreferrer">'
+
+            safe = _re2.sub(r"<a\b(?![^>]*\brel=)[^>]*>", _add_rel, safe)
         except Exception:
             pass
         return safe
