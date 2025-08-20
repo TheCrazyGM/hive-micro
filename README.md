@@ -48,6 +48,7 @@ Copy `sample.env` to `.env` and adjust as needed.
   - `HIVE_MICRO_MOD_REQUIRE_SIG`: Require per-action Keychain signature for moderator actions (0/1, default `0`).
 
 Notes
+
 - The backend filters ingested posts using `APP_ID` and the frontend broadcasts with the same id. The value is injected for client scripts as `window.HIVE_APP_ID`.
 - When debug auto-reload is active, the watcher is guarded to avoid duplicate threads.
 
@@ -122,6 +123,7 @@ UI routes
 - Watcher ingests blocks and stores posts where `payload.id == APP_ID`.
 
 Content length
+
 - The composer enforces `HIVE_MICRO_MAX_LEN` on the client with a live counter.
 - The API truncates content to this length for timeline and mentions responses so previews stay concise.
 - The single post endpoint and server-rendered permalink show full content.
@@ -140,7 +142,7 @@ Content length
 - Template organization with layout/partials/pages/errors; reusable post card macros.
 - Single source of truth for APP_ID across backend and frontend.
 - UI polish: Replaced alerts with Bootstrap toasts; improved light/dark theme surfaces and transitions; high-contrast tag chips; smoother trending refresh without flicker; unified image scaling inside cards; New Post page now a card with Markdown tip and live counter.
- - Moderation (soft-hide): optional moderators with quorum; timelines exclude hidden posts; permalinks show a transparent “Removed by moderators” stub with optional reason; actions audited.
+- Moderation (soft-hide): optional moderators with quorum; timelines exclude hidden posts; permalinks show a transparent “Removed by moderators” stub with optional reason; actions audited.
 
 ## License
 

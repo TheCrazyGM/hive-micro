@@ -1,16 +1,16 @@
 [project]
 name = "hive-micro"
-version = "0.1.0"
-description = "Very Crude Flask Keychain Login"
+version = "0.1.6"
+description = "A microblogging platform built on Hive blockchain"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "bleach>=6.2.0",
-    "flask>=3.1.1",
-    "flask-caching>=2.3.1",
-    "flask-sqlalchemy>=3.1.1",
-    "hive-nectar>=0.0.7",
-    "markdown>=3.8.2",
-    "pygments>=2.18.0",
-    "python-dotenv>=1.1.1",
+  "bleach>=6.2.0",
+  "flask>=3.1.1",
+  "flask-caching>=2.3.1",
+  "flask-sqlalchemy>=3.1.1",
+  "hive-nectar>=0.0.7",
+  "markdown>=3.8.2",
+  "pygments>=2.18.0",
+  "python-dotenv>=1.1.1",
 ]
