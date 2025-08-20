@@ -27,7 +27,7 @@ def main():
     # Ensure watcher is enabled for the sidecar
     os.environ.setdefault("HIVE_MICRO_WATCHER", "1")
 
-    create_app()
+    _app = create_app()
 
     # create_app() already starts the watcher (gated by HIVE_MICRO_WATCHER)
     print("[watcher] sidecar started; watcher thread should be running.", flush=True)
