@@ -87,8 +87,10 @@
                         const ft = document.querySelector('footer');
                         const top = nav ? nav.offsetHeight : 0;
                         const bottom = ft ? ft.offsetHeight : 0;
-                        document.body.style.paddingTop = (top || 0) + 'px';
-                        document.body.style.paddingBottom = (bottom || 0) + 'px';
+                        const extraTop = 8;      // small extra padding
+                        const extraBottom = 8;   // small extra padding
+                        document.body.style.paddingTop = ((top || 0) + extraTop) + 'px';
+                        document.body.style.paddingBottom = ((bottom || 0) + extraBottom) + 'px';
                     } catch (_) {}
                 }
                 adjustOffsets();
