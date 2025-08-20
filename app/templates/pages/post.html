@@ -20,11 +20,14 @@
                 <button id="modHideBtn" class="btn btn-sm btn-danger">Hide</button>
               {% endif %}
             </div>
+            <div id="modStatus" class="small text-muted mt-2"></div>
             <div class="mt-3" id="modLog"></div>
           </div>
         </div>
         <script>
           window.__POST_TRX_ID__ = {{ trx_id | tojson }};
+          window.__MOD_QUORUM__ = {{ config['MOD_QUORUM'] | tojson }};
+          window.__POST_HIDDEN__ = {{ (is_hidden or false) | tojson }};
         </script>
         <script src="{{ url_for('static', filename='js/moderation.js') }}"></script>
       {% endif %}

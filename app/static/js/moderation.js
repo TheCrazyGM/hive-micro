@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const hideBtn = document.getElementById('modHideBtn');
   const unhideBtn = document.getElementById('modUnhideBtn');
   const logEl = document.getElementById('modLog');
+  const statusEl = document.getElementById('modStatus');
 
   async function fetchLog() {
     if (!logEl) return;
@@ -32,6 +33,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       logEl.innerHTML = '';
       logEl.appendChild(list);
+      // Update inline pending status if applicable
+      try {
+        const quorum = Number(window.__MOD_QUORUM__ || 1);
+        const hidden = !!window.__POST_HIDDEN__;
+        let lastUnhide = null;
+        for (const a of items) {
+          if (a.action === 'unhide') {
+            const t = new Date(a.created_at).getTime();
+            if (lastUnhide === null || t > lastUnhide) lastUnhide = t;
+          }
+        }
+        const approvers = new Set();
+        for (const a of items) {
+          if (a.action !== 'hide') continue;
+          const t = new Date(a.created_at).getTime();
+          if (lastUnhide !== null && t <= lastUnhide) continue;
+          approvers.add(a.moderator);
+        }
+        const approvals = approvers.size;
+        if (!hidden && approvals > 0 && approvals < quorum && statusEl) {
+          statusEl.textContent = `Pending: ${approvals}/${quorum} approvals`;
+        } else if (statusEl) {
+          statusEl.textContent = '';
+        }
+      } catch (e) { /* ignore */ }
     } catch (e) {
       logEl.innerHTML = '<div class="text-danger">Failed to load moderation log</div>';
     }
@@ -69,9 +95,19 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
-      if (window.showToast) showToast(`Post ${action}d successfully`, 'success');
-      // Reload page to reflect state
-      setTimeout(() => window.location.reload(), 400);
+      if (action === 'hide' && !d.hidden) {
+        if (typeof d.approvals === 'number' && typeof d.quorum === 'number') {
+          if (window.showToast) showToast(`Pending: ${d.approvals}/${d.quorum} approvals`, 'info');
+          if (statusEl) statusEl.textContent = `Pending: ${d.approvals}/${d.quorum} approvals`;
+        } else if (window.showToast) {
+          showToast('Hide recorded', 'info');
+        }
+        // Refresh log without reloading page
+        fetchLog();
+      } else {
+        if (window.showToast) showToast(`Post ${action}d successfully`, 'success');
+        setTimeout(() => window.location.reload(), 400);
+      }
     } catch (e) {
       if (window.showToast) showToast('Moderation failed: ' + e.message, 'danger');
     }

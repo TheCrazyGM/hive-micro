@@ -271,8 +271,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const r = await fetch('/api/v1/mod/hide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(payload) });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
-            if (window.showToast) showToast('Post hidden', 'success');
-            card.remove();
+            if (d.hidden) {
+              if (window.showToast) showToast('Post hidden', 'success');
+              card.remove();
+            } else if (typeof d.approvals === 'number' && typeof d.quorum === 'number') {
+              if (window.showToast) showToast(`Pending: ${d.approvals}/${d.quorum} approvals`, 'info');
+            } else {
+              if (window.showToast) showToast('Hide recorded', 'info');
+            }
           }
         } catch (err) {
           if (window.showToast) showToast('Failed to hide: ' + err.message, 'danger');

@@ -478,6 +478,25 @@ def mod_hide():
     db.session.add(act)
     quorum = int(current_app.config.get("MOD_QUORUM", 1))
     hidden = False
+    # Determine last unhide cutoff so approvals reset after an unhide
+    last_unhide = (
+        db.session.query(ModerationAction.created_at)
+        .filter(
+            ModerationAction.trx_id == trx_id,
+            ModerationAction.action == "unhide",
+        )
+        .order_by(ModerationAction.created_at.desc())
+        .first()
+    )
+    cutoff = last_unhide[0] if last_unhide else None
+    # Count distinct moderators approving hide after cutoff
+    approvals_q = db.session.query(ModerationAction.moderator).filter(
+        ModerationAction.trx_id == trx_id,
+        ModerationAction.action == "hide",
+    )
+    if cutoff is not None:
+        approvals_q = approvals_q.filter(ModerationAction.created_at > cutoff)
+    approvals = approvals_q.distinct().count()
     if quorum <= 1:
         mod = Moderation.query.filter_by(trx_id=trx_id).first()
         if mod is None:
@@ -496,16 +515,7 @@ def mod_hide():
             mod.mod_at = _utcnow_naive()
         hidden = True
     else:
-        approvers = (
-            db.session.query(ModerationAction.moderator)
-            .filter(
-                ModerationAction.trx_id == trx_id,
-                ModerationAction.action == "hide",
-            )
-            .distinct()
-            .count()
-        )
-        if approvers >= quorum:
+        if approvals >= quorum:
             mod = Moderation.query.filter_by(trx_id=trx_id).first()
             if mod is None:
                 mod = Moderation(
@@ -523,7 +533,9 @@ def mod_hide():
                 mod.mod_at = _utcnow_naive()
             hidden = True
     db.session.commit()
-    return jsonify({"success": True, "hidden": hidden, "quorum": quorum})
+    return jsonify(
+        {"success": True, "hidden": hidden, "quorum": quorum, "approvals": approvals}
+    )
 
 
 @api_bp.route("/mod/unhide", methods=["POST"])
