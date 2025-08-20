@@ -34,7 +34,7 @@ document
             .then(async (r) => {
               const data = await r.json().catch(() => ({}));
               if (r.ok && data.success) {
-                localStorage.setItem("hive_username", username);
+                localStorage.setItem("hive.username", username);
                 window.location.href = "/feed";
               } else {
                 const msg = data && (data.error || JSON.stringify(data));

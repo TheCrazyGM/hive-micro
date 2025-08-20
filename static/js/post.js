@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", function () {
     e.preventDefault();
 
     const content = document.getElementById("postContent").value;
-    const username = localStorage.getItem("hive_username");
+    const username = localStorage.getItem("hive.username");
 
     if (!username) {
       alert("Please login first");
