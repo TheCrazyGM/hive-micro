@@ -35,14 +35,15 @@ document
               const data = await r.json().catch(() => ({}));
               if (r.ok && data.success) {
                 localStorage.setItem("hive.username", username);
+                if (window.showToast) showToast('Logged in successfully', 'success');
                 window.location.href = "/feed";
               } else {
                 const msg = data && (data.error || JSON.stringify(data));
-                alert("Login failed: " + (msg || r.status + " " + r.statusText));
+                if (window.showToast) showToast("Login failed: " + (msg || r.status + " " + r.statusText), 'danger');
               }
             })
             .catch((e) => {
-              alert("Network error: " + e.message);
+              if (window.showToast) showToast("Network error: " + e.message, 'danger');
             });
         }
       },

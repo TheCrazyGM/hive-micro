@@ -1,6 +1,9 @@
 document.addEventListener("DOMContentLoaded", function () {
   const postForm = document.getElementById("postForm");
   const appId = (typeof window !== 'undefined' && window.HIVE_APP_ID) ? window.HIVE_APP_ID : 'hive.micro';
+  const MAX_LEN = (typeof window !== 'undefined' && window.HIVE_MAX_CONTENT_LEN) ? Number(window.HIVE_MAX_CONTENT_LEN) : 512;
+  const ta = document.getElementById("postContent");
+  const counterEl = document.getElementById('charCounter');
   const params = new URLSearchParams(window.location.search);
   const replyTo = params.get('reply_to');
   const replyAuthor = params.get('author');
@@ -54,7 +57,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 <strong class="mb-0" style="font-size:0.95rem;"><a href="/u/${authorSlug}">@${author}</a></strong>
               </div>
               <div class="small text-muted">${dtStr}${trxHtml}</div>
-              <div class="mt-1">${item.html || linkify(item.content)}</div>
+              <div class="card-text mt-1">${item.html || linkify(item.content)}</div>
             </div>
           </div>`;
         preview.innerHTML = html;
@@ -75,14 +78,33 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  function updateCounter() {
+    if (!ta || !counterEl) return;
+    const len = (ta.value || '').length;
+    counterEl.textContent = `${len} / ${MAX_LEN}`;
+    if (len > MAX_LEN) {
+      counterEl.classList.add('text-danger');
+    } else {
+      counterEl.classList.remove('text-danger');
+    }
+  }
+  if (ta) {
+    ta.addEventListener('input', updateCounter);
+    updateCounter();
+  }
+
   postForm.addEventListener("submit", function (e) {
     e.preventDefault();
 
-    const content = document.getElementById("postContent").value;
+    const content = ta.value;
     const username = localStorage.getItem("hive.username");
 
     if (!username) {
-      alert("Please login first");
+      if (window.showToast) showToast("Please login first", 'warning');
+      return;
+    }
+    if ((content || '').length > MAX_LEN) {
+      if (window.showToast) showToast(`Post is too long. Maximum ${MAX_LEN} characters.`, 'danger');
       return;
     }
     // Extract mentions and tags client-side
@@ -119,7 +141,7 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     if (!window.hive_keychain) {
-      alert("Hive Keychain not detected");
+      if (window.showToast) showToast("Hive Keychain not detected", 'warning');
       return;
     }
 
@@ -146,7 +168,7 @@ document.addEventListener("DOMContentLoaded", function () {
           setTimeout(() => (window.location.href = "/feed"), 300);
         } else {
           const msg = response && response.message ? response.message : "Unknown error";
-          alert("Error posting to Hive: " + msg);
+          if (window.showToast) showToast("Error posting to Hive: " + msg, 'danger');
         }
       }
     );

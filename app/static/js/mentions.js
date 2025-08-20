@@ -48,10 +48,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const body = document.createElement("div");
     body.className = "card-body";
 
-    const h5 = document.createElement("h5");
-    h5.className = "card-title";
+    const headerWrap = document.createElement('div');
+    headerWrap.className = 'd-flex align-items-center gap-2 mb-1';
     const author = escapeHTML(item.author);
-    h5.innerHTML = `<a href="/u/${encodeURIComponent(item.author)}">@${author}</a>`;
+    const authorSlug = encodeURIComponent(String(item.author).toLowerCase());
+    const avatar = document.createElement('img');
+    avatar.src = `https://images.hive.blog/u/${authorSlug}/avatar`;
+    avatar.alt = `@${author}`;
+    avatar.width = 32;
+    avatar.height = 32;
+    avatar.loading = 'lazy';
+    avatar.className = 'rounded-circle flex-shrink-0';
+    avatar.style.objectFit = 'cover';
+    const h5 = document.createElement("h5");
+    h5.className = "card-title mb-0";
+    h5.innerHTML = `<a href="/u/${authorSlug}">@${author}</a>`;
+    headerWrap.appendChild(avatar);
+    headerWrap.appendChild(h5);
 
     const p = document.createElement("p");
     p.className = "card-text";
@@ -89,7 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
       for (const t of item.tags) {
         const a = document.createElement('a');
         a.href = `/feed?tag=${encodeURIComponent(String(t).toLowerCase())}`;
-        a.className = 'badge text-bg-light text-decoration-none me-1';
+        a.className = 'badge tag-chip text-decoration-none me-1';
         a.textContent = `#${t}`;
         tagWrap.appendChild(a);
       }
@@ -110,7 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
     meta.appendChild(ts);
     meta.appendChild(rightWrap);
 
-    body.appendChild(h5);
+    body.appendChild(headerWrap);
     if (replyIndicator) body.appendChild(replyIndicator);
     body.appendChild(p);
     body.appendChild(meta);

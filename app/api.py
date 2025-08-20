@@ -82,8 +82,10 @@ def api_timeline():
     q = q.order_by(Message.timestamp.desc()).limit(limit)
 
     items = []
+    max_len = int(current_app.config.get("CONTENT_MAX_LEN", 512))
     posts = q.all()
     for m in posts:
+        text = (m.content or "")[:max_len]
         items.append(
             {
                 "trx_id": m.trx_id,
@@ -91,8 +93,8 @@ def api_timeline():
                 "timestamp": m.timestamp.isoformat(),
                 "author": m.author,
                 "type": m.type,
-                "content": m.content,
-                "html": markdown_render(m.content),
+                "content": text,
+                "html": markdown_render(text),
                 "mentions": json.loads(m.mentions) if m.mentions else [],
                 "tags": json.loads(m.tags) if m.tags else [],
                 "reply_to": m.reply_to,
@@ -248,7 +250,9 @@ def api_mentions():
     q = q.order_by(Message.timestamp.desc()).limit(limit)
 
     items = []
+    max_len = int(current_app.config.get("CONTENT_MAX_LEN", 512))
     for m in q.all():
+        text = (m.content or "")[:max_len]
         items.append(
             {
                 "trx_id": m.trx_id,
@@ -256,8 +260,8 @@ def api_mentions():
                 "timestamp": m.timestamp.isoformat(),
                 "author": m.author,
                 "type": m.type,
-                "content": m.content,
-                "html": markdown_render(m.content),
+                "content": text,
+                "html": markdown_render(text),
                 "mentions": json.loads(m.mentions) if m.mentions else [],
                 "tags": json.loads(m.tags) if m.tags else [],
                 "reply_to": m.reply_to,

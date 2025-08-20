@@ -3,15 +3,28 @@
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-md-8" style="max-width: 600px;">
-      <h1 class="text-center mb-4">New Post</h1>
-      <div id="replyNotice" class="alert alert-secondary d-none py-2 px-3 mb-3" role="alert"></div>
-      <div id="replyPreview" class="mb-3 d-none"></div>
-      <form id="postForm">
-        <div class="mb-3">
-          <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?"></textarea>
+      <div class="card mb-3">
+        <div class="card-body">
+          <h2 class="mb-3">New Post</h2>
+          <div id="replyNotice" class="alert alert-secondary d-none py-2 px-3 mb-3" role="alert"></div>
+          <div id="replyPreview" class="mb-3 d-none"></div>
+          <form id="postForm">
+            <div class="mb-1">
+              <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?" maxlength="{{ config['CONTENT_MAX_LEN'] }}"></textarea>
+            </div>
+            <div class="form-text">Characters: <span id="charCounter">0 / {{ config['CONTENT_MAX_LEN'] }}</span></div>
+            <div class="form-text mb-3">
+              Tip: Basic Markdown is supported (bold, italics, links, images, code). Examples:
+              <code>**bold**</code>
+              <code>_italic_</code>
+              <code>[link](https://example.com)</code>
+              <code>![](https://...)</code>
+              <code>`inline code`</code>
+            </div>
+            <button type="submit" class="btn btn-primary">Post</button>
+          </form>
         </div>
-        <button type="submit" class="btn btn-primary">Post</button>
-      </form>
+      </div>
     </div>
   </div>
   <script src="{{ url_for('static', filename='js/post.js') }}"></script>

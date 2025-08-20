@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const t of item.tags) {
         const a = document.createElement('a');
         a.href = `/feed?tag=${encodeURIComponent(String(t).toLowerCase())}`;
-        a.className = 'badge text-bg-light text-decoration-none';
+        a.className = 'badge tag-chip text-decoration-none';
         a.textContent = `#${t}`;
         tagsWrap.appendChild(a);
       }

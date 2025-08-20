@@ -26,6 +26,11 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config.setdefault("CACHE_TYPE", "SimpleCache")
     app.config.setdefault("CACHE_DEFAULT_TIMEOUT", 60)
+    # Content length limit (characters) for display and posting UI
+    try:
+        app.config["CONTENT_MAX_LEN"] = int(os.environ.get("HIVE_MICRO_MAX_LEN", "512"))
+    except Exception:
+        app.config["CONTENT_MAX_LEN"] = 512
 
     db.init_app(app)
     cache.init_app(app)
