@@ -25,7 +25,7 @@
             </div>
           </div>
           <script>
-            window.__POST_TRX_ID__ = {{ trx_id|tojson }};
+            window.__POST_TRX_ID__ = {{ trx_id | tojson }};
           </script>
           <script src="{{ url_for('static', filename='js/moderation.js') }}"></script>
         {% endif %}

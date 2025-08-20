@@ -10,7 +10,8 @@
           <div id="replyPreview" class="mb-3 d-none"></div>
           <form id="postForm">
             <div class="mb-1">
-              <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?" maxlength="{{ config['CONTENT_MAX_LEN'] }}"></textarea>
+              <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?"
+                        maxlength="{{ config['CONTENT_MAX_LEN'] }}"></textarea>
             </div>
             <div class="form-text">Characters: <span id="charCounter">0 / {{ config['CONTENT_MAX_LEN'] }}</span></div>
             <div class="form-text mb-3">

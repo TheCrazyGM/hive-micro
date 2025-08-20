@@ -27,12 +27,12 @@
         <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.min.css" rel="stylesheet" />
         <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet" />
         <script>
-            // Expose server APP_ID to client scripts
-            window.HIVE_APP_ID = {{ config['APP_ID']|tojson }};
-            window.HIVE_MAX_CONTENT_LEN = {{ config['CONTENT_MAX_LEN']|tojson }};
-            window.HIVE_IS_MOD = {{ (session.get('username')|default('', true)|lower in config.get('MODERATORS', []))|tojson }};
-            window.HIVE_MOD_REQUIRE_SIG = {{ config['MOD_REQUIRE_SIGNATURE']|tojson }};
-            window.HIVE_MOD_REASON_REQUIRED = {{ config['MOD_REASON_REQUIRED']|tojson }};
+        // Expose server APP_ID to client scripts
+            window.HIVE_APP_ID = {{ config['APP_ID'] | tojson }};
+            window.HIVE_MAX_CONTENT_LEN = {{ config['CONTENT_MAX_LEN'] | tojson }};
+            window.HIVE_IS_MOD = {{ (session.get('username') |default ('', true) | lower in config.get('MODERATORS', []))| tojson }};
+            window.HIVE_MOD_REQUIRE_SIG = {{ config['MOD_REQUIRE_SIGNATURE'] | tojson }};
+            window.HIVE_MOD_REASON_REQUIRED = {{ config['MOD_REASON_REQUIRED'] | tojson }};
         </script>
         <style>
             body {
@@ -47,7 +47,8 @@
             {% block content %}{% endblock %}
         </div>
         {% include 'partials/footer.html' %}
-        <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" aria-live="polite" aria-atomic="true"></div>
+        <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" aria-live="polite"
+             aria-atomic="true"></div>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
         <script>
@@ -74,7 +75,7 @@
                         setTheme(next);
                     });
                 }
-                // Convert <time class="ts-local" datetime="..."> to user's locale display
+            // Convert <time class="ts-local" datetime="..."> to user's locale display
                 function formatLocalTimes() {
                     const nodes = document.querySelectorAll('time.ts-local');
                     nodes.forEach((t) => {

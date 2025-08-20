@@ -10,13 +10,16 @@
           {{ item.timestamp }}
           {% if item.trx_id %}
             {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
-            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx
+              }}</code></a>
           {% endif %}
         </div>
       {% else %}
         <div class="d-flex align-items-center gap-2 mb-1">
-          <img src="https://images.hive.blog/u/{{ item.author|lower|urlencode }}/avatar" alt="@{{ item.author }}" width="32" height="32" class="rounded-circle flex-shrink-0" style="object-fit:cover;" loading="lazy" />
-          <strong class="mb-0" style="font-size:0.95rem;"><a href="/u/{{ item.author|lower|urlencode }}">@{{ item.author }}</a></strong>
+          <img src="https://images.hive.blog/u/{{ item.author|lower|urlencode }}/avatar" alt="@{{ item.author }}" width="32"
+               height="32" class="rounded-circle flex-shrink-0" style="object-fit:cover;" loading="lazy" />
+          <strong class="mb-0" style="font-size:0.95rem;"><a href="/u/{{ item.author|lower|urlencode }}">@{{ item.author
+            }}</a></strong>
         </div>
         <div class="card-text mt-1">{{ item.html|safe }}</div>
         {% if item.tags %}
@@ -27,11 +30,12 @@
           </div>
         {% endif %}
         <div class="mt-2 small text-muted">
-          {# timestamp and trx id along the bottom #}
+      {# timestamp and trx id along the bottom #}
           <time class="ts-local" datetime="{{ item.timestamp }}">{{ item.timestamp }}</time>
           {% if item.trx_id %}
             {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
-            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx
+              }}</code></a>
           {% endif %}
           {% if item.reply_to %}
             · replying to <a class="text-decoration-none" href="/p/{{ item.reply_to }}">parent</a>
