@@ -5,8 +5,6 @@ from datetime import datetime
 
 from flask import Flask, abort, request, session
 from markupsafe import Markup, escape
-from nectar.hive import Hive
-from nectar.instance import set_shared_hive_instance
 
 from .extensions import cache
 from .helpers import start_block_watcher, stop_block_watcher
@@ -72,11 +70,7 @@ def create_app():
     app.config["APP_ID"] = os.environ.get("HIVE_MICRO_APP_ID", "hive.micro")
 
     # Initialize Hive instance with optional custom nodes
-    nodes_env = os.environ.get("HIVE_NODES", "").strip()
-    if nodes_env:
-        nodes = [n.strip() for n in nodes_env.split(",") if n.strip()]
-        hv = Hive(node=nodes, num_retries=5, num_retries_call=3, timeout=15)
-        set_shared_hive_instance(hv)
+    app.config["HIVE_NODES"] = os.environ.get("HIVE_NODES", "").strip()
 
     # Blueprints: API and UI kept separate for modularity
     from .api import api_bp

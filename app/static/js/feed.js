@@ -224,23 +224,13 @@ document.addEventListener("DOMContentLoaded", () => {
         e.stopPropagation();
         e.preventDefault();
         try {
-          const csrf = (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '');
+          const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
           if (item.hidden) {
             // Unhide flow
             const payload = { trx_id: item.trx_id };
-            if (window.HIVE_MOD_REQUIRE_SIG) {
-              const moderator = localStorage.getItem('hive.username');
-              if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
-              if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
-              const msg = `moderation:unhide:${item.trx_id}:${new Date().toISOString()}`;
-              await new Promise((resolve) => {
-                window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
-                  if (res && res.success) {
-                    payload.message = msg; payload.signature = res.result; payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null; resolve();
-                  } else { resolve(); }
-                });
-              });
-              if (!payload.signature) return;
+            if (window.requestModerationSignature) {
+              const sig = await window.requestModerationSignature('unhide', item.trx_id);
+              if (sig === null) return; Object.assign(payload, sig);
             }
             const r = await fetch('/api/v1/mod/unhide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(payload) });
             const d = await r.json().catch(()=>({}));
@@ -254,19 +244,9 @@ document.addEventListener("DOMContentLoaded", () => {
               const rsn = await showReasonModal({ title: 'Reason to hide', required: true });
               if (rsn == null) return; payload.reason = rsn;
             }
-            if (window.HIVE_MOD_REQUIRE_SIG) {
-              const moderator = localStorage.getItem('hive.username');
-              if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
-              if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
-              const msg = `moderation:hide:${item.trx_id}:${new Date().toISOString()}`;
-              await new Promise((resolve) => {
-                window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
-                  if (res && res.success) {
-                    payload.message = msg; payload.signature = res.result; payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null; resolve();
-                  } else { resolve(); }
-                });
-              });
-              if (!payload.signature) return;
+            if (window.requestModerationSignature) {
+              const sig = await window.requestModerationSignature('hide', item.trx_id);
+              if (sig === null) return; Object.assign(payload, sig);
             }
             const r = await fetch('/api/v1/mod/hide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(payload) });
             const d = await r.json().catch(() => ({}));

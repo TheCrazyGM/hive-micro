@@ -79,17 +79,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const rsn = await showReasonModal({ title: 'Reason to hide', required: true });
         if (rsn == null) return; payload.reason = rsn;
       }
+      if (window.requestModerationSignature) {
+        const sig = await window.requestModerationSignature('hide', trx);
+        if (sig === null) return; Object.assign(payload, sig);
+      }
       try {
-        const r = await fetch('/api/v1/mod/hide', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':(window.CSRF_TOKEN||'')}, body: JSON.stringify(payload)});
-        const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error||'failed');
-        if (window.showToast) showToast('Post hidden', 'success');
+        const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
+        const r = await fetch('/api/v1/mod/hide', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token': csrf}, body: JSON.stringify(payload)});
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.success) throw new Error(d.error||'failed');
+        if (d.hidden) {
+          if (window.showToast) showToast('Post hidden', 'success');
+        } else if (typeof d.approvals === 'number' && typeof d.quorum === 'number') {
+          if (window.showToast) showToast(`Pending: ${d.approvals}/${d.quorum} approvals`, 'info');
+        } else {
+          if (window.showToast) showToast('Hide recorded', 'info');
+        }
         load(true);
       } catch (err) { if (window.showToast) showToast('Hide failed', 'danger'); }
       return;
     }
     if (act === 'unhide') {
+      const payload = { trx_id: trx };
+      if (window.requestModerationSignature) {
+        const sig = await window.requestModerationSignature('unhide', trx);
+        if (sig === null) return; Object.assign(payload, sig);
+      }
       try {
-        const r = await fetch('/api/v1/mod/unhide', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':(window.CSRF_TOKEN||'')}, body: JSON.stringify({ trx_id: trx })});
+        const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
+        const r = await fetch('/api/v1/mod/unhide', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token': csrf}, body: JSON.stringify(payload)});
         const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error||'failed');
         if (window.showToast) showToast('Post unhidden', 'success');
         load(true);

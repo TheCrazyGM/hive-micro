@@ -1,0 +1,37 @@
+version: "3.8"
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: hive-micro:latest
+    container_name: hive-micro-web
+    env_file:
+      - .env
+    environment:
+      # Ensure watcher does not run inside web container
+      - HIVE_MICRO_WATCHER=0
+      # Persist SQLite DB in mounted volume path
+      - DATABASE_URL=sqlite:////data/app.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - hive_micro_data:/data
+    restart: unless-stopped
+  watcher:
+    image: hive-micro:latest
+    container_name: hive-micro-watcher
+    depends_on:
+      - web
+    command: ["python", "-m", "app.watcher"]
+    env_file:
+      - .env
+    environment:
+      - HIVE_MICRO_WATCHER=1
+      - DATABASE_URL=sqlite:////data/app.db
+    volumes:
+      - hive_micro_data:/data
+    restart: unless-stopped
+volumes:
+  hive_micro_data:
+    driver: local

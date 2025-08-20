@@ -1,0 +1,24 @@
+[Unit]
+Description=Hive Micro - Block Watcher Sidecar
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/hive-micro
+EnvironmentFile=-/etc/hive-micro.env
+
+# Ensure the watcher is enabled for this process
+Environment=HIVE_MICRO_WATCHER=1
+
+ExecStart=/srv/hive-micro/venv/bin/python -m app.watcher
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+

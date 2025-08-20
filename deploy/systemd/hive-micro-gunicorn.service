@@ -1,0 +1,27 @@
+[Unit]
+Description=Hive Micro - Gunicorn Application Server
+After=network.target
+
+[Service]
+Type=simple
+# Set these to the user/group that owns the app files
+User=www-data
+Group=www-data
+
+# Path to your project root containing the 'app' package directory
+WorkingDirectory=/srv/hive-micro
+
+# Load environment variables (KEY=VALUE lines)
+EnvironmentFile=-/etc/hive-micro.env
+
+# Path to your virtualenv gunicorn binary
+ExecStart=/srv/hive-micro/venv/bin/gunicorn -w 4 -b 0.0.0.0:8000 app.wsgi:app
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+

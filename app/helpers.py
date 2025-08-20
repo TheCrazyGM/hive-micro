@@ -152,7 +152,7 @@ def markdown_render(content: str) -> str:
 def _get_hive_instance():
     """Return a Hive instance (uses shared instance if configured)."""
     try:
-        return Hive()
+        return Hive(node=current_app.config["HIVE_NODES"])
     except Exception:
         # Fallback: reuse earlier hv if available via shared instance
         return Hive()

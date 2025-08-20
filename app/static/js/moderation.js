@@ -66,31 +66,15 @@ document.addEventListener('DOMContentLoaded', () => {
   async function modAction(action) {
     const payload = { trx_id: trxId };
     if (action === 'hide') payload.reason = (reasonEl && reasonEl.value) || '';
-    if (window.HIVE_MOD_REQUIRE_SIG) {
-      const moderator = localStorage.getItem('hive.username');
-      if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
-      if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
-      const msg = `moderation:${action}:${trxId}:${new Date().toISOString()}`;
-      await new Promise((resolve) => {
-        window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
-          if (res && res.success) {
-            payload.message = msg;
-            payload.signature = res.result;
-            payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null;
-            resolve();
-          } else {
-            if (window.showToast) showToast('Signature cancelled', 'info');
-            resolve();
-          }
-        });
-      });
-      if (!payload.signature) return;
+    if (window.requestModerationSignature) {
+      const sig = await window.requestModerationSignature(action, trxId);
+      if (sig === null) return; Object.assign(payload, sig);
     }
     try {
       const url = action === 'hide' ? '/api/v1/mod/hide' : '/api/v1/mod/unhide';
       const r = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '') },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '')) },
         body: JSON.stringify(payload)
       });
       const d = await r.json().catch(() => ({}));
