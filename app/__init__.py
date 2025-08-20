@@ -1,16 +1,16 @@
+import atexit
 import os
+import secrets
+from datetime import datetime
 
-from flask import Flask
+from flask import Flask, abort, request, session
+from markupsafe import Markup, escape
 from nectar.hive import Hive
 from nectar.instance import set_shared_hive_instance
 
 from .extensions import cache
-import atexit
-
 from .helpers import start_block_watcher, stop_block_watcher
 from .models import db
-from markupsafe import Markup, escape
-from datetime import datetime
 
 
 def create_app():
@@ -26,6 +26,28 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config.setdefault("CACHE_TYPE", "SimpleCache")
     app.config.setdefault("CACHE_DEFAULT_TIMEOUT", 60)
+    # Security settings
+    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+    app.config.setdefault("SESSION_COOKIE_SECURE", False)
+    # Allow overriding via environment
+    scs = os.environ.get("SESSION_COOKIE_SAMESITE")
+    if scs:
+        app.config["SESSION_COOKIE_SAMESITE"] = scs
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+        "SESSION_COOKIE_SECURE", "0"
+    ) in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    # Login proof freshness window (seconds)
+    try:
+        app.config["LOGIN_MAX_SKEW"] = int(
+            os.environ.get("HIVE_MICRO_LOGIN_MAX_SKEW", "120")
+        )
+    except Exception:
+        app.config["LOGIN_MAX_SKEW"] = 120
     # Content length limit (characters) for display and posting UI
     try:
         app.config["CONTENT_MAX_LEN"] = int(os.environ.get("HIVE_MICRO_MAX_LEN", "512"))
@@ -65,6 +87,40 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+
+    # --- CSRF token setup and validation ---
+    @app.before_request
+    def _ensure_csrf_token():
+        if "csrf_token" not in session:
+            session["csrf_token"] = secrets.token_urlsafe(32)
+
+    @app.after_request
+    def _set_csrf_cookie(resp):
+        # Double-submit cookie for frontend to read and send back in header
+        token = session.get("csrf_token", "")
+        resp.set_cookie(
+            "XSRF-TOKEN",
+            token,
+            samesite="Lax",
+            secure=app.config.get("SESSION_COOKIE_SECURE", False),
+            httponly=False,
+            path="/",
+        )
+        return resp
+
+    @app.before_request
+    def _csrf_protect():
+        if request.method in (
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ) and request.path.startswith("/api/v1/"):
+            hdr = request.headers.get("X-CSRF-Token", "")
+            cky = request.cookies.get("XSRF-TOKEN", "")
+            tok = session.get("csrf_token", "")
+            if not tok or hdr != tok or cky != tok:
+                return abort(403)
 
     start_block_watcher(app)
     atexit.register(stop_block_watcher)

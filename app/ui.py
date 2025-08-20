@@ -10,9 +10,9 @@ from flask import (
     url_for,
 )
 from nectar.account import Account
-from .models import Message, Moderation
-from .helpers import markdown_render, _get_following_usernames
 
+from .helpers import _get_following_usernames, markdown_render
+from .models import Message, Moderation
 
 ui_bp = Blueprint("ui", __name__)
 
@@ -163,6 +163,19 @@ def post_page(trx_id: str):
 def logout():
     session.pop("username", None)
     return redirect(url_for("ui.index"))
+
+
+@ui_bp.route("/moderation")
+def moderation_page():
+    # mods only
+    if not session.get("username"):
+        return redirect(url_for("ui.index"))
+    uname = session.get("username", "").lower()
+    from flask import current_app
+
+    if uname not in (current_app.config.get("MODERATORS") or []):
+        return redirect(url_for("ui.feed"))
+    return render_template("pages/mod_dashboard.html")
 
 
 # --- Error handlers ---

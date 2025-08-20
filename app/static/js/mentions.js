@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function markSeen() {
     try {
-      await fetch('/api/v1/mentions/seen', { method: 'POST' });
+      await fetch('/api/v1/mentions/seen', { method: 'POST', headers: { 'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '') } });
       // Optimistically update navbar badge if present
       const badge = document.getElementById('nav-mentions-count');
       if (badge) {

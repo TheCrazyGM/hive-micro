@@ -37,6 +37,10 @@ Copy `sample.env` to `.env` and adjust as needed.
 - `HIVE_NODES`: Optional comma-separated list of Hive API nodes.
 - `HIVE_MICRO_WATCHER`: `1` to enable background watcher, `0` to disable (default `1`).
 - `HIVE_MICRO_MAX_LEN`: Maximum characters for composer and previews (default `512`).
+- `HIVE_MICRO_LOGIN_MAX_SKEW`: Max login proof skew in seconds (default `120`).
+- Cookie security (prod):
+  - `SESSION_COOKIE_SECURE`: Set to `1` when serving over HTTPS.
+  - `SESSION_COOKIE_SAMESITE`: `Lax` (default), `Strict`, or `None`.
 - Moderation:
   - `HIVE_MICRO_MODERATORS`: Comma-separated moderator usernames (lowercase).
   - `HIVE_MICRO_MOD_QUORUM`: Number of approvals required to hide a post (default `1`).

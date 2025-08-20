@@ -1,23 +1,23 @@
 import json
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request, session, current_app
+from flask import Blueprint, current_app, jsonify, request, session
 
 from .helpers import (
     _get_following_usernames,
     _parse_login_payload,
+    _parse_timestamp,
     _verify_signature_and_key,
     markdown_render,
 )
 from .models import (
     Checkpoint,
-    Message,
     MentionState,
+    Message,
     Moderation,
     ModerationAction,
     db,
 )
-
 
 api_bp = Blueprint("api", __name__)
 
@@ -80,8 +80,12 @@ def api_timeline():
     tag_filter = request.args.get("tag")
 
     q = Message.query
-    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
-    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
+    include_hidden = request.args.get("include_hidden") == "1"
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if not (include_hidden and is_mod):
+        q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
     if cursor:
         try:
             dt = datetime.fromisoformat(cursor)
@@ -105,7 +109,17 @@ def api_timeline():
     items = []
     max_len = int(current_app.config.get("CONTENT_MAX_LEN", 512))
     posts = q.all()
+    include_hidden = request.args.get("include_hidden") == "1"
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
     for m in posts:
+        hidden_flag = False
+        mod_reason = None
+        if include_hidden and is_mod:
+            mod = Moderation.query.filter_by(trx_id=m.trx_id).first()
+            hidden_flag = bool(mod and mod.visibility == "hidden")
+            mod_reason = mod.mod_reason if (mod and mod.mod_reason) else None
         text = (m.content or "")[:max_len]
         items.append(
             {
@@ -119,6 +133,11 @@ def api_timeline():
                 "mentions": json.loads(m.mentions) if m.mentions else [],
                 "tags": json.loads(m.tags) if m.tags else [],
                 "reply_to": m.reply_to,
+                **(
+                    {"hidden": hidden_flag, "mod_reason": mod_reason}
+                    if (include_hidden and is_mod)
+                    else {}
+                ),
             }
         )
 
@@ -139,7 +158,12 @@ def api_timeline_new_count():
     tag_filter = request.args.get("tag")
 
     q = Message.query.filter(Message.timestamp > dt)
-    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
+    include_hidden = request.args.get("include_hidden") == "1"
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if not (include_hidden and is_mod):
+        q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
 
     if following_flag and session.get("username"):
         flw = _get_following_usernames(session["username"]) or set()
@@ -340,11 +364,66 @@ def api_mentions():
     return jsonify({"items": items, "count": len(items)})
 
 
+@api_bp.route("/mod/list")
+def mod_list():
+    if "username" not in session:
+        return jsonify({"items": []}), 401
+    uname = session["username"].lower()
+    if uname not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"items": []}), 403
+    try:
+        limit = int(request.args.get("limit", 20))
+    except Exception:
+        limit = 20
+    limit = max(1, min(limit, 100))
+    only_hidden = request.args.get("only_hidden") == "1"
+    cursor = request.args.get("cursor")
+    q = Message.query
+    if cursor:
+        try:
+            dt = datetime.fromisoformat(cursor)
+            q = q.filter(Message.timestamp < dt)
+        except Exception:
+            pass
+    q = q.order_by(Message.timestamp.desc()).limit(limit)
+    rows = q.all()
+    items = []
+    for m in rows:
+        mod = Moderation.query.filter_by(trx_id=m.trx_id).first()
+        hidden = bool(mod and mod.visibility == "hidden")
+        if only_hidden and not hidden:
+            continue
+        items.append(
+            {
+                "trx_id": m.trx_id,
+                "timestamp": m.timestamp.isoformat(),
+                "author": m.author,
+                "content": m.content,
+                "tags": json.loads(m.tags) if m.tags else [],
+                "hidden": hidden,
+                "mod_reason": (mod.mod_reason if (mod and mod.mod_reason) else None),
+            }
+        )
+    return jsonify({"items": items})
+
+
 @api_bp.route("/login", methods=["POST"])
 def login():
     signature, username, pubkey, message, err, status = _parse_login_payload()
     if err is not None:
         return err, status
+    # Enforce freshness window on the signed message (ISO timestamp)
+    try:
+        msg_dt = _parse_timestamp(str(message))
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        skew = abs((now - msg_dt).total_seconds())
+        max_skew = int(current_app.config.get("LOGIN_MAX_SKEW", 120))
+        if skew > max_skew:
+            return jsonify(
+                {"success": False, "error": "Stale or future-dated proof."}
+            ), 400
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid proof timestamp."}), 400
 
     try:
         valid, invalid_resp = _verify_signature_and_key(

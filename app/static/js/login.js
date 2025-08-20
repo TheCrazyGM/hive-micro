@@ -27,7 +27,7 @@ document
           };
           fetch("/api/v1/login", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", 'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '') },
             body: JSON.stringify(payload),
             credentials: "same-origin",
           })

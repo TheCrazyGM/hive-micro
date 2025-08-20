@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const url = action === 'hide' ? '/api/v1/mod/hide' : '/api/v1/mod/unhide';
       const r = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '') },
         body: JSON.stringify(payload)
       });
       const d = await r.json().catch(() => ({}));
@@ -82,4 +82,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fetchLog();
 });
-

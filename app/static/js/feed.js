@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const navFeedBadge = document.getElementById('nav-feed-new-count');
   const trendingList = document.getElementById('trendingTagsList');
   const refreshTrendingBtn = document.getElementById('refreshTrendingBtn');
+  const modShowHiddenToggle = document.getElementById('modShowHiddenToggle');
   const urlParams = new URLSearchParams(window.location.search);
   let currentTag = urlParams.get('tag');
 
@@ -19,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ---- Persisted preferences (localStorage) ----
   const LS_FOLLOWING_KEY = 'hive.followingOnly';
+  const LS_SHOW_HIDDEN_KEY = 'hive.showHidden';
   function loadFollowingPref() {
     try {
       const v = localStorage.getItem(LS_FOLLOWING_KEY);
@@ -34,6 +36,18 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (_) {
       // ignore storage errors
     }
+  }
+
+  function loadShowHiddenPref() {
+    if (!modShowHiddenToggle) return;
+    try {
+      const v = localStorage.getItem(LS_SHOW_HIDDEN_KEY);
+      modShowHiddenToggle.checked = (v === '1' || v === 'true');
+    } catch (_) {}
+  }
+  function saveShowHiddenPref() {
+    if (!modShowHiddenToggle) return;
+    try { localStorage.setItem(LS_SHOW_HIDDEN_KEY, modShowHiddenToggle.checked ? '1' : '0'); } catch (_) {}
   }
 
   function escapeHTML(s) {
@@ -190,50 +204,81 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     rightWrap.appendChild(replyBtn);
+    if (window.HIVE_IS_MOD && item.hidden) {
+      const badge = document.createElement('span');
+      badge.className = 'badge text-bg-warning';
+      badge.textContent = 'Hidden';
+      rightWrap.appendChild(badge);
+    }
     if (window.HIVE_IS_MOD) {
-      const hideBtn = document.createElement('button');
-      hideBtn.type = 'button';
-      hideBtn.className = 'btn btn-sm btn-outline-danger';
-      hideBtn.textContent = 'Hide';
-      hideBtn.addEventListener('click', async (e) => {
+      const modBtn = document.createElement('button');
+      modBtn.type = 'button';
+      if (item.hidden) {
+        modBtn.className = 'btn btn-sm btn-success';
+        modBtn.textContent = 'Unhide';
+      } else {
+        modBtn.className = 'btn btn-sm btn-outline-danger';
+        modBtn.textContent = 'Hide';
+      }
+      modBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         e.preventDefault();
         try {
-          const payload = { trx_id: item.trx_id };
-          if (window.HIVE_MOD_REASON_REQUIRED) {
-            const rsn = window.prompt('Enter reason to hide this post:');
-            if (!rsn || !rsn.trim()) { if (window.showToast) showToast('Reason is required', 'warning'); return; }
-            payload.reason = rsn.trim();
-          }
-          if (window.HIVE_MOD_REQUIRE_SIG) {
-            const moderator = localStorage.getItem('hive.username');
-            if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
-            if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
-            const msg = `moderation:hide:${item.trx_id}:${new Date().toISOString()}`;
-            await new Promise((resolve) => {
-              window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
-                if (res && res.success) {
-                  payload.message = msg;
-                  payload.signature = res.result;
-                  payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null;
-                  resolve();
-                } else { resolve(); }
+          const csrf = (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '');
+          if (item.hidden) {
+            // Unhide flow
+            const payload = { trx_id: item.trx_id };
+            if (window.HIVE_MOD_REQUIRE_SIG) {
+              const moderator = localStorage.getItem('hive.username');
+              if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
+              if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
+              const msg = `moderation:unhide:${item.trx_id}:${new Date().toISOString()}`;
+              await new Promise((resolve) => {
+                window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
+                  if (res && res.success) {
+                    payload.message = msg; payload.signature = res.result; payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null; resolve();
+                  } else { resolve(); }
+                });
               });
-            });
-            if (!payload.signature) return;
+              if (!payload.signature) return;
+            }
+            const r = await fetch('/api/v1/mod/unhide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(payload) });
+            const d = await r.json().catch(()=>({}));
+            if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
+            if (window.showToast) showToast('Post unhidden', 'success');
+            card.remove();
+          } else {
+            // Hide flow
+            const payload = { trx_id: item.trx_id };
+            if (window.HIVE_MOD_REASON_REQUIRED && window.showReasonModal) {
+              const rsn = await showReasonModal({ title: 'Reason to hide', required: true });
+              if (rsn == null) return; payload.reason = rsn;
+            }
+            if (window.HIVE_MOD_REQUIRE_SIG) {
+              const moderator = localStorage.getItem('hive.username');
+              if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
+              if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
+              const msg = `moderation:hide:${item.trx_id}:${new Date().toISOString()}`;
+              await new Promise((resolve) => {
+                window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
+                  if (res && res.success) {
+                    payload.message = msg; payload.signature = res.result; payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null; resolve();
+                  } else { resolve(); }
+                });
+              });
+              if (!payload.signature) return;
+            }
+            const r = await fetch('/api/v1/mod/hide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(payload) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
+            if (window.showToast) showToast('Post hidden', 'success');
+            card.remove();
           }
-          const r = await fetch('/api/v1/mod/hide', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-          });
-          const d = await r.json().catch(() => ({}));
-          if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
-          if (window.showToast) showToast('Post hidden', 'success');
-          card.remove();
         } catch (err) {
           if (window.showToast) showToast('Failed to hide: ' + err.message, 'danger');
         }
       });
-      rightWrap.appendChild(hideBtn);
+      rightWrap.appendChild(modBtn);
     }
 
     meta.appendChild(ts);
@@ -301,6 +346,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cursor) params.set("cursor", cursor);
     if (followingToggle.checked) params.set("following", "1");
     if (currentTag) params.set('tag', currentTag);
+    if (window.HIVE_IS_MOD && modShowHiddenToggle && modShowHiddenToggle.checked) {
+      params.set('include_hidden', '1');
+    }
     console.debug('[feed] loadFeed', { reset, cursor, following: followingToggle.checked, tag: currentTag, qs: params.toString() });
 
     try {
@@ -358,6 +406,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const p = new URLSearchParams();
       p.set('since', latestTopTs);
       if (followingToggle.checked) p.set('following', '1');
+      if (window.HIVE_IS_MOD && modShowHiddenToggle && modShowHiddenToggle.checked) {
+        p.set('include_hidden', '1');
+      }
       if (currentTag) p.set('tag', currentTag);
       const r = await fetch(`/api/v1/timeline/new_count?${p.toString()}`);
       if (!r.ok) throw new Error('bad');
@@ -391,11 +442,18 @@ document.addEventListener("DOMContentLoaded", () => {
     loadFeed(true);
     refreshStatus();
   });
+  if (modShowHiddenToggle) {
+    modShowHiddenToggle.addEventListener('change', () => {
+      saveShowHiddenPref();
+      loadFeed(true);
+    });
+  }
 
   // initial load
   renderActiveTagIndicator();
   // initialize following toggle from storage BEFORE first load
   loadFollowingPref();
+  loadShowHiddenPref();
   loadFeed(true);
   loadTrendingTags();
   refreshStatus();
