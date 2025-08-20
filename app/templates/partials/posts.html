@@ -1,0 +1,40 @@
+{% macro post_card(item) %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <img src="https://images.hive.blog/u/{{ item.author|lower|urlencode }}/avatar" alt="@{{ item.author }}" width="32" height="32" class="rounded-circle flex-shrink-0" style="object-fit:cover;" loading="lazy" />
+        <strong class="mb-0" style="font-size:0.95rem;"><a href="/u/{{ item.author|lower|urlencode }}">@{{ item.author }}</a></strong>
+      </div>
+      <div class="mt-1">{{ item.html|safe }}</div>
+      {% if item.tags %}
+        <div class="mt-2 small text-muted">
+          {% for t in item.tags %}
+            <a class="text-decoration-none me-2" href="/feed?tag={{ t|urlencode }}">#{{ t }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="mt-2 small text-muted">
+        {# timestamp and trx id along the bottom #}
+        {{ item.timestamp | tolocaltime }}
+        {% if item.trx_id %}
+          {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
+          · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+        {% endif %}
+        {% if item.reply_to %}
+          · replying to <a class="text-decoration-none" href="/p/{{ item.reply_to }}">parent</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro replies_list(items) %}
+  {% if items and items|length > 0 %}
+    <div class="mt-3">
+      <h6 class="text-muted">Replies</h6>
+      {% for r in items %}
+        {{ post_card(r) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}

@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", function () {
   const postForm = document.getElementById("postForm");
+  const appId = (typeof window !== 'undefined' && window.HIVE_APP_ID) ? window.HIVE_APP_ID : 'hive.micro';
   const params = new URLSearchParams(window.location.search);
   const replyTo = params.get('reply_to');
   const replyAuthor = params.get('author');
@@ -108,7 +109,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const { mentions, tags } = extractMentionsTags(content || "");
 
     const payload = {
-      app: "hive.micro",
+      app: appId,
       v: 1,
       type: "post",
       content: content,
@@ -128,7 +129,7 @@ document.addEventListener("DOMContentLoaded", function () {
         {
           required_auths: [],
           required_posting_auths: [username],
-          id: "hive.micro",
+          id: appId,
           json: JSON.stringify(payload),
         },
       ],

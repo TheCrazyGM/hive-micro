@@ -1,94 +1,125 @@
 # Hive Micro
 
-Hive Micro is a lightweight micro-posting web app for the Hive blockchain. It features Hive Keychain login, a real-time-ish timeline backed by a local database of `custom_json` messages, following filtering, mentions, tags, Markdown rendering with HTML sanitization, avatars, and a clean Bootstrap UI.
+Hive Micro is a lightweight micro-posting web app for the Hive blockchain. It supports Hive Keychain login, a local database of `custom_json` posts, a timeline with following and tag filters, mentions, and safe Markdown rendering — all wrapped in a clean Bootstrap UI.
 
 ## Features
 
-- **Login with Hive Keychain**: Sign a server-provided challenge; backend verifies signature using `PublicKey.verify_message()`.
-- **Timeline feed**: Paginated timeline with optional filters.
-  - Toggle: **Following only** (shows posts from accounts you follow).
-  - Filter by **#tag** via URL query.
-- **Single post view**: Shows a post and its replies (thread view).
-- **Replying**: Quick reply flow pre-fills `@author` and references parent trx id.
-- **Mentions**: Backend endpoints for mentions count and list; client-side extraction at post time.
-- **Markdown + basic HTML**: Server renders and sanitizes to safe HTML using `markdown` + `bleach`.
-- **Avatars**: Small round avatars via `https://images.hive.blog/u/<username>/avatar`.
-- **Caching**: Simple in-memory cache for frequently used data (e.g., following list).
+- Login with Hive Keychain: server challenge + signature verification on backend.
+- Timeline: pagination, “Following only” toggle, and tag filter.
+- Single post view: post + replies (thread).
+- Mentions: unread count and mentions feed.
+- Composer: create posts and replies; client extracts mentions/tags.
+- Markdown rendering: sanitized HTML via Python-Markdown + Bleach.
+- Caching: lightweight Flask-Caching for small computed results (e.g., following list).
 
-## Tech stack
+## Architecture
 
-- Backend: Flask, SQLAlchemy, Flask-Caching
-- Hive lib: nectar (`Hive`, `Account`, shared instance)
-- Crypto verify: `nectargraphenebase`
-- Frontend: Vanilla JS + Bootstrap
+- App factory: `app.create_app()` configures extensions and blueprints.
+- Blueprints:
+  - API: `app/api.py` mounted at `/api/v1`.
+  - UI: `app/ui.py` serving pages.
+- Templates:
+  - Layout: `templates/layout/base.html`.
+  - Partials: `templates/partials/{navbar,footer,posts}.html`.
+  - Pages: `templates/pages/*.html`.
+  - Errors: `templates/errors/*.html`.
+- Background watcher: a small thread that ingests Hive blocks and stores posts with a matching `APP_ID`.
 
 ## Environment configuration
 
-See `sample.env` for all options. Key variables from `app.py`:
+Copy `sample.env` to `.env` and adjust as needed.
 
-- **FLASK_SECRET_KEY**: Flask session secret
-- **DATABASE_URL**: SQLAlchemy connection string (default `sqlite:///app.db`)
-- **CACHE_TYPE**: Flask-Caching backend (default `SimpleCache`)
-- **CACHE_DEFAULT_TIMEOUT**: Cache TTL in seconds (default `60`)
-- **HIVE_MICRO_APP_ID**: App id for `custom_json` (default `hive.micro`)
-- **HIVE_NODES**: Optional comma-separated list of Hive API nodes
-- **HIVE_MICRO_WATCHER**: Optional flag to enable background block watcher (if applicable)
+- `FLASK_SECRET_KEY`: Flask session secret (default dev key).
+- `DATABASE_URL`: SQLAlchemy database URL (default `sqlite:///app.db`).
+- `CACHE_TYPE`: Flask-Caching backend (default `SimpleCache`).
+- `CACHE_DEFAULT_TIMEOUT`: Cache TTL seconds (default `60`).
+- `HIVE_MICRO_APP_ID`: App id for `custom_json` (default `hive.micro`).
+- `HIVE_NODES`: Optional comma-separated list of Hive API nodes.
+- `HIVE_MICRO_WATCHER`: `1` to enable background watcher, `0` to disable (default `1`).
 
-Example `sample.env` already included in the repo.
+Notes
+- The backend filters ingested posts using `APP_ID` and the frontend broadcasts with the same id. The value is injected for client scripts as `window.HIVE_APP_ID`.
+- When debug auto-reload is active, the watcher is guarded to avoid duplicate threads.
 
-## Running locally
+## Quickstart
 
-1. Create and activate a virtual environment
-2. Install dependencies (managed via `uv`/`pyproject.toml`)
-3. Copy `sample.env` to `.env` (or export vars)
-4. Run the app
-
-Example using uv:
+Using `uv` (preferred):
 
 ```bash
 uv sync
 cp sample.env .env
-uv run flask --app app run --debug
+uv run python run.py   # runs on port 8000 by default
 ```
 
-Then visit `http://127.0.0.1:5000/`.
+Using pip:
 
-## Key endpoints (server)
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+cp sample.env .env
+python run.py
+```
 
-- `GET /api/v1/timeline`
-  - Query params: `limit`, `cursor` (ISO timestamp), `following=1`, `tag`
-  - Returns: items with `content` and sanitized `html`
-- `GET /api/v1/post/<trx_id>`: Returns a single item and its `replies`
-- `GET /api/v1/mentions/count`
-- `GET /api/v1/mentions/list`
-- `POST /login`: Verifies Keychain signature and establishes a session
+Visit `http://127.0.0.1:8000/`.
 
-UI routes:
+To disable the watcher during local dev:
 
-- `/feed` main feed
-- `/p/<trx_id>` single post page
-- `/new_post` composer (supports replying via query params)
-- `/u/<username>` basic profile view
+```bash
+HIVE_MICRO_WATCHER=0 python run.py
+```
 
-## Content rendering and safety
+## API endpoints
 
-- Server: `markdown_render()`
-  - Pre-linkifies `@user` and `#tag` to internal links
-  - Renders Markdown
-  - Sanitizes HTML via Bleach (safe tags/attrs/protocols only)
-- Client: prefers `item.html` from backend; falls back to linkified plain text
+Base URL: `/api/v1`
 
-## Following filter
+- `GET /timeline`
+  - Params: `limit`, `cursor` (ISO), `following=1`, `tag`
+- `GET /timeline/new_count`
+- `GET /post/<trx_id>`
+- `GET /mentions`
+- `GET /mentions/count`
+- `POST /mentions/seen`
+- `GET /tags/trending`
+- `GET /status` — returns `{ app_id, messages, last_block }`
+- `POST /login` — verifies Keychain signature and creates session
 
-- Uses `Account(<user>).get_following()` from nectar; results are normalized and cached briefly.
+UI routes
 
-## Development notes
+- `/` login page
+- `/feed` timeline
+- `/mentions` mentions feed
+- `/new_post` composer (supports reply via query params `?reply_to=<trx>&author=<name>`)
+- `/p/<trx_id>` single post + replies
+- `/u/<username>` basic profile
 
-- Frontend JS lives in `static/js/`:
-  - `feed.js` timeline, pagination, toggle, tag filter
-  - `post_view.js` single post + replies
-  - `post.js` composer and reply preview
-- Templates in `templates/` with Bootstrap styling
+## Data model (SQLite by default)
+
+- `messages`: posts (`trx_id`, `block_num`, `timestamp`, `author`, `content`, optional `mentions/tags` as JSON, `reply_to`, `raw_json`).
+- `checkpoints`: last processed block for ingestion.
+- `mention_state`: per-username `last_seen` to compute unread counts.
+
+## Posting flow
+
+- Client (`static/js/post.js`) builds a `custom_json` with:
+  - `id = window.HIVE_APP_ID`
+  - payload: `{ app: window.HIVE_APP_ID, v: 1, type: 'post', content, mentions, tags, reply_to }`
+- Broadcast via Hive Keychain.
+- Watcher ingests blocks and stores posts where `payload.id == APP_ID`.
+
+## Rendering and safety
+
+- Server `helpers.markdown_render()`:
+  - Converts `@user` and `#tag` to internal links pre-Markdown.
+  - Renders Markdown and sanitizes HTML via Bleach.
+- Frontend prefers server-provided `item.html` and falls back to linkified text.
+
+## Refactor highlights (current)
+
+- Split routes into `api.py` and `ui.py` blueprints; API mounted at `/api/v1`.
+- Modular background watcher using the real app context and clean shutdown at exit.
+- Template organization with layout/partials/pages/errors; reusable post card macros.
+- Single source of truth for APP_ID across backend and frontend.
 
 ## License
 

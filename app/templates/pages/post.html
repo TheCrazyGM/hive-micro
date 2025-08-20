@@ -1,0 +1,16 @@
+{% extends "layout/base.html" %}
+{% import "partials/posts.html" as posts %}
+{% block title %}Post{% endblock %}
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-md-8" style="max-width: 700px;">
+      {% if item %}
+        {{ posts.post_card(item) }}
+        {{ posts.replies_list(replies) }}
+      {% else %}
+        <div id="post-view" data-trx-id="{{ trx_id }}"></div>
+      {% endif %}
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/post_view.js') }}"></script>
+{% endblock %}
