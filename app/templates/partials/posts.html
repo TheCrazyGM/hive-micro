@@ -7,9 +7,9 @@
       </div>
       <div class="mt-1">{{ item.html|safe }}</div>
       {% if item.tags %}
-        <div class="mt-2 small text-muted">
+        <div class="mt-2 d-flex flex-wrap gap-1">
           {% for t in item.tags %}
-            <a class="text-decoration-none me-2" href="/feed?tag={{ t|urlencode }}">#{{ t }}</a>
+            <a class="badge tag-chip text-decoration-none" href="/feed?tag={{ t|urlencode }}">#{{ t }}</a>
           {% endfor %}
         </div>
       {% endif %}
