@@ -32,20 +32,21 @@
             window.HIVE_APP_ID = {{ config['APP_ID'] | tojson }};
             window.HIVE_MAX_CONTENT_LEN = {{ config['CONTENT_MAX_LEN'] | tojson }};
             window.HIVE_IS_MOD = {{ (session.get('username') |default ('', true) | lower in config.get('MODERATORS', []))| tojson }};
+            window.HIVE_IS_AUTH = {{ (session.get('username') is not none) | tojson }};
             window.HIVE_MOD_REQUIRE_SIG = {{ config['MOD_REQUIRE_SIGNATURE'] | tojson }};
             window.HIVE_MOD_REASON_REQUIRED = {{ config['MOD_REASON_REQUIRED'] | tojson }};
             window.CSRF_TOKEN = {{ session.get('csrf_token','') | tojson }};
         </script>
         <style>
-            body {
-                font-family: "Share Tech Mono", monospace;
-            }
+            body { font-family: "Share Tech Mono", monospace; }
+            /* Prevent content being hidden under fixed header/footer; JS will adjust exact padding */
+            body { padding-top: 56px; padding-bottom: 48px; }
         </style>
     </head>
 
     <body class="d-flex flex-column min-vh-100">
         {% include 'partials/navbar.html' %}
-        <div class="container mt-5 flex-grow-1">
+        <div class="container flex-grow-1">
             {% block content %}{% endblock %}
         </div>
         {% include 'partials/footer.html' %}
@@ -79,6 +80,19 @@
             document.addEventListener('DOMContentLoaded', () => {
                 const el = document.getElementById('footer-status');
                 const mentionBadge = document.getElementById('nav-mentions-count');
+                // Adjust body padding to account for fixed header/footer
+                function adjustOffsets() {
+                    try {
+                        const nav = document.querySelector('nav.navbar');
+                        const ft = document.querySelector('footer');
+                        const top = nav ? nav.offsetHeight : 0;
+                        const bottom = ft ? ft.offsetHeight : 0;
+                        document.body.style.paddingTop = (top || 0) + 'px';
+                        document.body.style.paddingBottom = (bottom || 0) + 'px';
+                    } catch (_) {}
+                }
+                adjustOffsets();
+                window.addEventListener('resize', adjustOffsets);
             // Theme toggle
                 const themeBtn = document.getElementById('themeToggleBtn');
                 const themeIcon = document.getElementById('themeToggleIcon');
@@ -125,6 +139,7 @@
                 }
                 async function refreshMentionCount() {
                     if (!mentionBadge) return;
+                    if (!window.HIVE_IS_AUTH) { return; }
                     try {
                         const r = await fetch('/api/v1/mentions/count');
                         if (!r.ok) throw new Error('bad');
