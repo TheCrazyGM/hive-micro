@@ -132,7 +132,7 @@
                     try {
                         const r = await fetch('/api/v1/status');
                         const d = await r.json();
-                        el.textContent = `app: ${d.app_id} · messages: ${d.messages} · last block: ${d.last_block}`;
+                        el.textContent = `messages: ${d.messages} · last block: ${d.last_block}`;
                     } catch (e) {
                         el.textContent = 'status unavailable';
                     }
@@ -144,11 +144,17 @@
                         const r = await fetch('/api/v1/mentions/count');
                         if (!r.ok) throw new Error('bad');
                         const d = await r.json();
-                        mentionBadge.textContent = d.count;
-                        mentionBadge.className = d.count > 0 ? 'badge text-bg-primary' : 'badge text-bg-secondary';
+                        if (window.setMentionBadge) setMentionBadge(d.count);
+                        else {
+                            mentionBadge.textContent = d.count;
+                            mentionBadge.className = d.count > 0 ? 'badge text-bg-primary' : 'badge text-bg-secondary';
+                        }
                     } catch (e) {
-                        mentionBadge.textContent = '0';
-                        mentionBadge.className = 'badge text-bg-secondary';
+                        if (window.setMentionBadge) setMentionBadge(0);
+                        else {
+                            mentionBadge.textContent = '0';
+                            mentionBadge.className = 'badge text-bg-secondary';
+                        }
                     }
                 }
                 refresh();

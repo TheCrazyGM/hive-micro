@@ -30,6 +30,15 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     return withTags;
   }
+  // Override with shared helpers if available
+  try {
+    if (window.escapeHTML) {
+      escapeHTML = function (s) { return window.escapeHTML(s); };
+    }
+    if (window.linkifyText) {
+      linkify = function (t) { return window.linkifyText(t); };
+    }
+  } catch (e) {}
   if (replyTo && notice) {
     const who = replyAuthor ? ` @${replyAuthor}` : '';
     notice.classList.remove('d-none');
@@ -47,20 +56,32 @@ document.addEventListener("DOMContentLoaded", function () {
         const author = escapeHTML(item.author);
         const authorSlug = encodeURIComponent(String(item.author).toLowerCase());
         const dtStr = new Date(item.timestamp).toLocaleString();
-        const shortTrx = item.trx_id ? `${escapeHTML(String(item.trx_id).slice(0,8))}…${escapeHTML(String(item.trx_id).slice(-8))}` : '';
-        const trxHtml = item.trx_id ? ` · trx: <a class="text-decoration-none" href="/p/${encodeURIComponent(item.trx_id)}" title="${escapeHTML(item.trx_id)}"><code class="trx-hash">${shortTrx}</code></a>` : '';
-        const html = `
-          <div class="card border-secondary">
-            <div class="card-body py-2">
-              <div class="d-flex align-items-center gap-2 mb-1">
-                <img src="https://images.hive.blog/u/${authorSlug}/avatar" alt="@${author}" width="24" height="24" class="rounded-circle flex-shrink-0" style="object-fit:cover;" loading="lazy" />
-                <strong class="mb-0" style="font-size:0.95rem;"><a href="/u/${authorSlug}">@${author}</a></strong>
-              </div>
-              <div class="small text-muted">${dtStr}${trxHtml}</div>
-              <div class="card-text mt-1">${item.html || linkify(item.content)}</div>
-            </div>
-          </div>`;
-        preview.innerHTML = html;
+        const trxHtml = item.trx_id ? (' · trx: ' + (window.buildTrxLink ? window.buildTrxLink(item.trx_id) : '')) : '';
+        const card = document.createElement('div');
+        card.className = 'card border-secondary';
+        const body = document.createElement('div');
+        body.className = 'card-body py-2';
+        const header = document.createElement('div');
+        header.className = 'd-flex align-items-center gap-2 mb-1';
+        const avatar = (window.createAvatarImg ? window.createAvatarImg(item.author, 24) : (function(){ const im=document.createElement('img'); im.src=`https://images.hive.blog/u/${authorSlug}/avatar`; im.alt=`@${author}`; im.width=24; im.height=24; im.loading='lazy'; im.className='rounded-circle flex-shrink-0'; im.style.objectFit='cover'; return im; })());
+        const strong = document.createElement('strong');
+        strong.className = 'mb-0';
+        strong.style.fontSize = '0.95rem';
+        strong.innerHTML = `<a href="/u/${authorSlug}">@${author}</a>`;
+        header.appendChild(avatar);
+        header.appendChild(strong);
+        const meta = document.createElement('div');
+        meta.className = 'small text-muted';
+        meta.innerHTML = `${dtStr}${trxHtml}`;
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'card-text mt-1';
+        contentDiv.innerHTML = item.html || linkify(item.content);
+        body.appendChild(header);
+        body.appendChild(meta);
+        body.appendChild(contentDiv);
+        card.appendChild(body);
+        preview.innerHTML = '';
+        preview.appendChild(card);
         preview.classList.remove('d-none');
       } catch (e) {
         // leave preview hidden on failure

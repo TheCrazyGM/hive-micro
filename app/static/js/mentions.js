@@ -7,39 +7,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function markSeen() {
     try {
-      await fetch('/api/v1/mentions/seen', { method: 'POST', headers: { 'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || '') } });
-      // Optimistically update navbar badge if present
-      const badge = document.getElementById('nav-mentions-count');
-      if (badge) {
-        badge.textContent = '0';
-        badge.className = 'badge text-bg-secondary';
-      }
-    } catch (e) {
-      // ignore
-    }
+      const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
+      await fetch('/api/v1/mentions/seen', { method: 'POST', headers: { 'X-CSRF-Token': csrf } });
+      if (window.setMentionBadge) setMentionBadge(0);
+    } catch (e) {}
   }
 
-  function escapeHTML(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  function escapeHTML(s) { return window.escapeHTML ? window.escapeHTML(s) : String(s); }
 
-  function linkify(text) {
-    const esc = escapeHTML(text || '');
-    const withMentions = esc.replace(/(^|\s)@([a-z0-9\-\.]+)/gi, (m, pre, u) => {
-      const uname = encodeURIComponent(u.toLowerCase());
-      return `${pre}<a href="/u/${uname}">@${u}</a>`;
-    });
-    const withTags = withMentions.replace(/(^|\s)#([a-z0-9\-]+)/gi, (m, pre, t) => {
-      const tag = encodeURIComponent(t.toLowerCase());
-      return `${pre}<a href="/feed?tag=${tag}">#${t}</a>`;
-    });
-    return withTags;
-  }
+  function linkify(text) { return window.linkifyText ? window.linkifyText(text) : String(text || ''); }
 
   function renderItem(item) {
     const card = document.createElement("div");
@@ -52,14 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     headerWrap.className = 'd-flex align-items-center gap-2 mb-1';
     const author = escapeHTML(item.author);
     const authorSlug = encodeURIComponent(String(item.author).toLowerCase());
-    const avatar = document.createElement('img');
-    avatar.src = `https://images.hive.blog/u/${authorSlug}/avatar`;
-    avatar.alt = `@${author}`;
-    avatar.width = 32;
-    avatar.height = 32;
-    avatar.loading = 'lazy';
-    avatar.className = 'rounded-circle flex-shrink-0';
-    avatar.style.objectFit = 'cover';
+    const avatar = (window.createAvatarImg ? window.createAvatarImg(item.author, 32) : (function(){ const im=document.createElement('img'); im.src=`https://images.hive.blog/u/${authorSlug}/avatar`; im.alt=`@${author}`; im.width=32; im.height=32; im.loading='lazy'; im.className='rounded-circle flex-shrink-0'; im.style.objectFit='cover'; return im; })());
     const h5 = document.createElement("h5");
     h5.className = "card-title mb-0";
     h5.innerHTML = `<a href="/u/${authorSlug}">@${author}</a>`;
@@ -71,13 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     p.innerHTML = linkify(item.content);
 
     // In reply to indicator
-    let replyIndicator = null;
-    if (item.reply_to) {
-      replyIndicator = document.createElement('div');
-      replyIndicator.className = 'reply-indicator small mb-1';
-      const parentLink = `/p/${encodeURIComponent(item.reply_to)}`;
-      replyIndicator.innerHTML = `in reply to <a href="${parentLink}">parent</a>`;
-    }
+    let replyIndicator = window.buildReplyIndicator ? window.buildReplyIndicator(item.reply_to) : null;
 
     const meta = document.createElement("div");
     meta.className = "post-meta d-flex justify-content-between align-items-center flex-nowrap gap-2";
@@ -87,26 +50,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ts.style.fontSize = "0.8rem";
     const dtStr = new Date(item.timestamp).toLocaleString();
     if (item.trx_id) {
-      const pid = encodeURIComponent(item.trx_id);
-      const full = String(item.trx_id);
-      const short = `${escapeHTML(full.slice(0, 8))}…${escapeHTML(full.slice(-8))}`;
-      ts.innerHTML = `${dtStr} · trx: <a class="text-decoration-none" href="/p/${pid}" title="${escapeHTML(full)}"><code class="trx-hash">${short}</code></a>`;
+      const linkHtml = (window.buildTrxLink ? window.buildTrxLink(item.trx_id) : (function(){ const full=String(item.trx_id); const pid=encodeURIComponent(full); const short = `${full.slice(0,8)}…${full.slice(-8)}`; return `<a class=\"text-decoration-none\" href=\"/p/${pid}\" title=\"${full}\"><code class=\"trx-hash\">${short}</code></a>`; })());
+      ts.innerHTML = `${dtStr} · trx: ${linkHtml}`;
     } else {
       ts.textContent = dtStr;
     }
 
     const rightWrap = document.createElement('div');
     rightWrap.className = 'd-flex align-items-center gap-2';
-    const tagWrap = document.createElement("div");
-    if (Array.isArray(item.tags) && item.tags.length) {
-      for (const t of item.tags) {
-        const a = document.createElement('a');
-        a.href = `/feed?tag=${encodeURIComponent(String(t).toLowerCase())}`;
-        a.className = 'badge tag-chip text-decoration-none me-1';
-        a.textContent = `#${t}`;
-        tagWrap.appendChild(a);
-      }
-    }
+    const tagWrap = (window.buildTagChips ? window.buildTagChips(item.tags || [], { basePath: '/feed?tag=', itemClass: 'badge tag-chip text-decoration-none', extraItemClass: 'me-1' }) : (function(){ const d=document.createElement('div'); d.className='d-flex flex-wrap gap-1 mb-2'; return d; })());
 
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';

@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const feedContainer = document.getElementById("feed-container");
   const loadMoreBtn = document.getElementById("loadMoreBtn");
   const followingToggle = document.getElementById("followingToggle");
-  const statusEl = document.getElementById("footer-status");
+  // footer status handled globally in base layout script
   const newBanner = document.getElementById('newPostsBanner');
   const newCountEl = document.getElementById('newPostsCount');
   const showNewBtn = document.getElementById('showNewPostsBtn');
@@ -50,14 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try { localStorage.setItem(LS_SHOW_HIDDEN_KEY, modShowHiddenToggle.checked ? '1' : '0'); } catch (_) {}
   }
 
-  function escapeHTML(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  // Using shared utils: window.escapeHTML, window.linkifyText, window.buildTrxLink
 
   async function loadTrendingTags() {
     if (!trendingList) return;
@@ -88,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-center';
         const tag = String(it.tag || '').toLowerCase();
-        li.innerHTML = `<a href="/feed?tag=${encodeURIComponent(tag)}">#${escapeHTML(tag)}</a><span class="badge text-bg-secondary">${it.count || 0}</span>`;
+        li.innerHTML = `<a href="/feed?tag=${encodeURIComponent(tag)}">#${window.escapeHTML ? window.escapeHTML(tag) : tag}</a><span class=\"badge text-bg-secondary\">${it.count || 0}</span>`;
         trendingList.appendChild(li);
       }
       trendingList.setAttribute('data-state', 'ready');
@@ -103,20 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function linkify(text) {
-    const esc = escapeHTML(text || '');
-    // linkify @mentions -> /u/<username>
-    const withMentions = esc.replace(/(^|\s)@([a-z0-9\-\.]+)/gi, (m, pre, u) => {
-      const uname = encodeURIComponent(u.toLowerCase());
-      return `${pre}<a href="/u/${uname}">@${u}</a>`;
-    });
-    // linkify #tags -> /feed?tag=<tag>
-    const withTags = withMentions.replace(/(^|\s)#([a-z0-9\-]+)/gi, (m, pre, t) => {
-      const tag = encodeURIComponent(t.toLowerCase());
-      return `${pre}<a href="/feed?tag=${tag}">#${t}</a>`;
-    });
-    return withTags;
-  }
+  // linkify handled by shared window.linkifyText
 
   function renderItem(item) {
     const card = document.createElement("div");
@@ -128,16 +108,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const headerWrap = document.createElement('div');
     headerWrap.className = 'd-flex align-items-center gap-2 mb-1';
 
-    const avatar = document.createElement('img');
-    const author = escapeHTML(item.author);
+    const author = (window.escapeHTML ? window.escapeHTML(item.author) : String(item.author));
+    const avatar = (window.createAvatarImg ? window.createAvatarImg(item.author, 32) : (function(){ const im=document.createElement('img');
+      const authorSlug = encodeURIComponent(String(item.author).toLowerCase());
+      im.src=`https://images.hive.blog/u/${authorSlug}/avatar`; im.alt=`@${author}`; im.width=32; im.height=32; im.loading='lazy'; im.className='rounded-circle flex-shrink-0'; im.style.objectFit='cover'; return im; })());
     const authorSlug = encodeURIComponent(String(item.author).toLowerCase());
-    avatar.src = `https://images.hive.blog/u/${authorSlug}/avatar`;
-    avatar.alt = `@${author}`;
-    avatar.width = 32;
-    avatar.height = 32;
-    avatar.loading = 'lazy';
-    avatar.className = 'rounded-circle flex-shrink-0';
-    avatar.style.objectFit = 'cover';
 
     const h5 = document.createElement("h5");
     h5.className = "card-title mb-0";
@@ -148,16 +123,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const p = document.createElement("p");
     p.className = "card-text";
-    p.innerHTML = item.html || linkify(item.content);
+    p.innerHTML = item.html || (window.linkifyText ? window.linkifyText(item.content) : String(item.content));
 
     // In reply to indicator
-    let replyIndicator = null;
-    if (item.reply_to) {
-      replyIndicator = document.createElement('div');
-      replyIndicator.className = 'reply-indicator small mb-1';
-      const parentLink = `/p/${encodeURIComponent(item.reply_to)}`;
-      replyIndicator.innerHTML = `in reply to <a href="${parentLink}">parent</a>`;
-    }
+    let replyIndicator = window.buildReplyIndicator ? window.buildReplyIndicator(item.reply_to) : null;
 
     const meta = document.createElement("div");
     meta.className = "post-meta d-flex justify-content-between align-items-center flex-nowrap gap-2";
@@ -167,27 +136,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ts.style.fontSize = "0.8rem";
     const dtStr = new Date(item.timestamp).toLocaleString();
     if (item.trx_id) {
-      const pid = encodeURIComponent(item.trx_id);
-      const full = String(item.trx_id);
-      const short = `${escapeHTML(full.slice(0, 8))}…${escapeHTML(full.slice(-8))}`;
-      ts.innerHTML = `${dtStr} · trx: <a class="text-decoration-none" href="/p/${pid}" title="${escapeHTML(full)}"><code class="trx-hash">${short}</code></a>`;
+      const linkHtml = (window.buildTrxLink ? window.buildTrxLink(item.trx_id) : (function(){ const full=String(item.trx_id); const pid=encodeURIComponent(full); const short = `${full.slice(0,8)}…${full.slice(-8)}`; return `<a class=\"text-decoration-none\" href=\"/p/${pid}\" title=\"${full}\"><code class=\"trx-hash\">${short}</code></a>`; })());
+      ts.innerHTML = `${dtStr} · trx: ${linkHtml}`;
     } else {
       ts.textContent = dtStr;
     }
 
     const rightWrap = document.createElement('div');
     rightWrap.className = 'meta-right d-flex align-items-center gap-2';
-    const tagWrap = document.createElement("div");
-    tagWrap.className = 'd-flex flex-wrap gap-1 mb-2';
-    if (Array.isArray(item.tags) && item.tags.length) {
-      for (const t of item.tags) {
-        const a = document.createElement('a');
-        a.href = `?tag=${encodeURIComponent(String(t).toLowerCase())}`;
-        a.className = 'badge tag-chip text-decoration-none';
-        a.textContent = `#${t}`;
-        tagWrap.appendChild(a);
-      }
-    }
+    const tagWrap = (window.buildTagChips ? window.buildTagChips(item.tags || [], { basePath: '?tag=', itemClass: 'badge tag-chip text-decoration-none' }) : (function(){ const d=document.createElement('div'); d.className='d-flex flex-wrap gap-1 mb-2'; return d; })());
 
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';
@@ -279,20 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return card;
   }
 
-  async function refreshStatus() {
-    try {
-      const res = await fetch("/api/v1/status");
-      const data = await res.json();
-      console.debug('[feed] timeline response', { status: res.status, count: data.count, items: (data.items||[]).length });
-      if (statusEl) {
-        statusEl.textContent = `messages: ${data.messages} · last block: ${data.last_block}`;
-      }
-    } catch (e) {
-      if (statusEl) {
-        statusEl.textContent = "status unavailable";
-      }
-    }
-  }
+  // status refresh is handled globally; no per-page duplications
 
   // show active tag filter indicator
   function renderActiveTagIndicator() {
@@ -363,7 +307,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateNewUI(count) {
     // Banner
-    if (newBanner && newCountEl) {
+    if (window.setNewPostsBanner) setNewPostsBanner(count);
+    else if (newBanner && newCountEl) {
       if (count > 0) {
         newCountEl.textContent = count;
         newBanner.classList.remove('d-none');
@@ -372,7 +317,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     // Navbar badge
-    if (navFeedBadge) {
+    if (window.setFeedNewBadge) setFeedNewBadge(count);
+    else if (navFeedBadge) {
       if (count > 0) {
         navFeedBadge.textContent = count;
         navFeedBadge.classList.remove('d-none');
@@ -426,7 +372,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.debug('[feed] followingToggle changed', { checked: followingToggle.checked });
     saveFollowingPref();
     loadFeed(true);
-    refreshStatus();
   });
   if (modShowHiddenToggle) {
     modShowHiddenToggle.addEventListener('change', () => {
@@ -442,7 +387,6 @@ document.addEventListener("DOMContentLoaded", () => {
   loadShowHiddenPref();
   loadFeed(true);
   loadTrendingTags();
-  refreshStatus();
   // poll for new posts every 20s
   setInterval(pollNewCount, 20000);
   // refresh trending tags every 60s
