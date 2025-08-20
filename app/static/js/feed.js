@@ -200,6 +200,11 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         try {
           const payload = { trx_id: item.trx_id };
+          if (window.HIVE_MOD_REASON_REQUIRED) {
+            const rsn = window.prompt('Enter reason to hide this post:');
+            if (!rsn || !rsn.trim()) { if (window.showToast) showToast('Reason is required', 'warning'); return; }
+            payload.reason = rsn.trim();
+          }
           if (window.HIVE_MOD_REQUIRE_SIG) {
             const moderator = localStorage.getItem('hive.username');
             if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }

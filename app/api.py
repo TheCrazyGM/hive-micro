@@ -37,7 +37,11 @@ def api_tags_trending():
     except Exception:
         limit = 10
 
-    q = Message.query.order_by(Message.timestamp.desc()).limit(window)
+    q = (
+        Message.query.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
+        .order_by(Message.timestamp.desc())
+        .limit(window)
+    )
     rows = q.all()
     counts: dict[str, int] = {}
     for m in rows:

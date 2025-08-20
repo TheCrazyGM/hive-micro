@@ -15,7 +15,7 @@
               </div>
               <div class="mt-2 d-flex gap-2 align-items-center">
                 <input type="text" id="modReason" class="form-control" placeholder="Reason (optional)" />
-                {% if item.removed %}
+                {% if is_hidden %}
                   <button id="modUnhideBtn" class="btn btn-sm btn-success">Unhide</button>
                 {% else %}
                   <button id="modHideBtn" class="btn btn-sm btn-danger">Hide</button>

@@ -117,7 +117,7 @@ def post_page(trx_id: str):
         }
         replies = []
         return render_template(
-            "pages/post.html", trx_id=trx_id, item=item, replies=replies
+            "pages/post.html", trx_id=trx_id, item=item, replies=replies, is_hidden=True
         )
     item = {
         "trx_id": m.trx_id,
@@ -154,7 +154,9 @@ def post_page(trx_id: str):
             == "hidden"
         )
     ]
-    return render_template("pages/post.html", trx_id=trx_id, item=item, replies=replies)
+    return render_template(
+        "pages/post.html", trx_id=trx_id, item=item, replies=replies, is_hidden=hidden
+    )
 
 
 @ui_bp.route("/logout")

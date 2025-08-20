@@ -13,7 +13,7 @@ from nectargraphenebase.account import PublicKey
 from nectargraphenebase.ecdsasig import verify_message
 
 from .extensions import cache
-from .models import Checkpoint, Message
+from .models import Checkpoint, Message, db
 
 
 def markdown_render(content: str) -> str:
@@ -414,8 +414,66 @@ def _ensure_initialized(app=None):
             return
     with ctx_app.app_context():
         db.create_all()
+        try:
+            upgrade_schema()
+        except Exception:
+            pass
     start_block_watcher(ctx_app)
     _initialized = True
+
+
+def upgrade_schema():
+    """Lightweight schema upgrades for SQLite (and best-effort for others).
+    Ensures new columns exist without Alembic migrations.
+    """
+    from sqlalchemy import text as _sqltext
+
+    # Check moderation_actions signature columns
+    try:
+        res = db.session.execute(_sqltext("PRAGMA table_info(moderation_actions)"))
+        cols = {row[1] for row in res.fetchall()}
+        stmts = []
+        if "sig_message" not in cols:
+            stmts.append("ALTER TABLE moderation_actions ADD COLUMN sig_message TEXT")
+        if "sig_pubkey" not in cols:
+            stmts.append(
+                "ALTER TABLE moderation_actions ADD COLUMN sig_pubkey VARCHAR(64)"
+            )
+        if "sig_value" not in cols:
+            stmts.append("ALTER TABLE moderation_actions ADD COLUMN sig_value TEXT")
+        for s in stmts:
+            try:
+                db.session.execute(_sqltext(s))
+            except Exception:
+                pass
+        if stmts:
+            db.session.commit()
+    except Exception:
+        # Fallback generic approach (e.g., Postgres)
+        from sqlalchemy import inspect as _inspect
+
+        try:
+            insp = _inspect(db.engine)
+            cols = {c["name"] for c in insp.get_columns("moderation_actions")}
+            if "sig_message" not in cols:
+                db.session.execute(
+                    _sqltext(
+                        "ALTER TABLE moderation_actions ADD COLUMN sig_message TEXT"
+                    )
+                )
+            if "sig_pubkey" not in cols:
+                db.session.execute(
+                    _sqltext(
+                        "ALTER TABLE moderation_actions ADD COLUMN sig_pubkey VARCHAR(64)"
+                    )
+                )
+            if "sig_value" not in cols:
+                db.session.execute(
+                    _sqltext("ALTER TABLE moderation_actions ADD COLUMN sig_value TEXT")
+                )
+            db.session.commit()
+        except Exception:
+            pass
 
 
 def stop_block_watcher(timeout: float = 2.0):

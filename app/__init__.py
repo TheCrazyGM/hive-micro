@@ -65,6 +65,12 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        try:
+            from .helpers import upgrade_schema
+
+            upgrade_schema()
+        except Exception:
+            pass
 
     start_block_watcher(app)
     atexit.register(stop_block_watcher)

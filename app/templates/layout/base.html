@@ -32,6 +32,7 @@
             window.HIVE_MAX_CONTENT_LEN = {{ config['CONTENT_MAX_LEN']|tojson }};
             window.HIVE_IS_MOD = {{ (session.get('username')|default('', true)|lower in config.get('MODERATORS', []))|tojson }};
             window.HIVE_MOD_REQUIRE_SIG = {{ config['MOD_REQUIRE_SIGNATURE']|tojson }};
+            window.HIVE_MOD_REASON_REQUIRED = {{ config['MOD_REASON_REQUIRED']|tojson }};
         </script>
         <style>
             body {
