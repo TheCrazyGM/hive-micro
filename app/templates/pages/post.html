@@ -3,7 +3,7 @@
 {% block title %}Post{% endblock %}
 {% block content %}
   <div class="row justify-content-center">
-    <div class="col-md-8" style="max-width: 700px;">
+    <div class="col-md-10 col-lg-9 col-xl-8" style="max-width: 960px;">
       {% if item %}
         {{ posts.post_card(item) }}
         {% if session.username and (session.username|lower) in (config['MODERATORS'] or []) %}
