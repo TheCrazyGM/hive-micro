@@ -62,9 +62,11 @@ def markdown_render(content: str) -> str:
             ],
             extension_configs={
                 "codehilite": {
-                    "guess_lang": False,
+                    "guess_lang": True,
                     "noclasses": False,  # prefer CSS classes for theming
                     "pygments_style": "default",
+                    "css_class": "codehilite",
+                    "wrapcode": False,
                 },
             },
             output_format="html5",
@@ -80,12 +82,17 @@ def markdown_render(content: str) -> str:
             "blockquote",
             "a",
             "img",
+            "div",  # for codehilite wrapper
+            "span",  # for pygments token spans
         }
         allowed_attrs = {
             "a": ["href", "title", "rel", "target"],
             "code": ["class"],
             # Disallow width/height overrides; keep loading for lazy images
             "img": ["src", "alt", "title", "loading"],
+            "div": ["class"],
+            "span": ["class"],
+            "pre": ["class"],
         }
         allowed_protocols = ["http", "https", "mailto"]
         safe = clean(
@@ -95,9 +102,27 @@ def markdown_render(content: str) -> str:
             protocols=allowed_protocols,
             strip=True,
         )
-        # Auto-link bare URLs safely
+        # Auto-link bare URLs safely, but skip entire code blocks to preserve structure
         try:
-            safe = linkify(safe)
+            import re as _re_link
+
+            def _linkify_segment(segment: str) -> str:
+                try:
+                    return linkify(segment)
+                except Exception:
+                    return segment
+
+            # Match either a full codehilite wrapper or a standalone <pre> block
+            code_pattern = _re_link.compile(
+                r"(<div[^>]*class=\"[^\"]*codehilite[^\"]*\"[^>]*>[\s\S]*?<\/div>|<pre[\s\S]*?>[\s\S]*?<\/pre>)",
+                _re_link.IGNORECASE,
+            )
+            tokens = code_pattern.split(safe)
+            # tokens alternates: [non-code, code, non-code, code, ...]
+            for i in range(0, len(tokens)):
+                if i % 2 == 0:  # non-code segment
+                    tokens[i] = _linkify_segment(tokens[i])
+            safe = "".join(tokens)
         except Exception:
             pass
 
@@ -107,6 +132,27 @@ def markdown_render(content: str) -> str:
 
             safe = _re.sub(
                 r"<img(?![^>]*\bloading=)([^>]*)>", r'<img loading="lazy"\1>', safe
+            )
+        except Exception:
+            pass
+
+        # Normalize code blocks: ensure <div class="codehilite"> wraps the <pre> content
+        try:
+            import re as _re_code
+
+            # Merge pattern: empty codehilite div immediately followed by a pre
+            safe = _re_code.sub(
+                r"<div[^>]*class=\"[^\"]*codehilite[^\"]*\"[^>]*>\s*</div>\s*(<pre[\s\S]*?>[\s\S]*?<\/pre>)",
+                r"<div class=\"codehilite\">\1</div>",
+                safe,
+                flags=_re_code.IGNORECASE,
+            )
+            # Add codehilite class to orphan pre blocks (no existing class)
+            safe = _re_code.sub(
+                r"<pre(?![^>]*\bclass=)([^>]*)>",
+                r"<pre class=\"codehilite\"\1>",
+                safe,
+                flags=_re_code.IGNORECASE,
             )
         except Exception:
             pass
