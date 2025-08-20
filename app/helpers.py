@@ -16,6 +16,18 @@ from .extensions import cache
 from .models import Checkpoint, Message, db
 
 
+def _utcnow_naive() -> datetime:
+    """Return current UTC time as a naive datetime (no tzinfo)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Normalize any datetime to naive UTC for consistent DB storage."""
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def markdown_render(content: str) -> str:
     """Render user content as sanitized HTML.
     - Convert simple @mentions and #tags to links before Markdown.
@@ -213,10 +225,11 @@ def _parse_timestamp(ts: str) -> datetime:
     if ts.endswith("Z"):
         ts = ts[:-1]
     try:
-        return datetime.fromisoformat(ts)
+        parsed = datetime.fromisoformat(ts)
+        return _to_naive_utc(parsed)
     except Exception:
-        # As a fallback, return current time to avoid crashes
-        return datetime.now(timezone.utc)
+        # Fallback to UTC (naive)
+        return _utcnow_naive()
 
 
 def _extract_mentions_tags(content: str) -> tuple[list[str], list[str]]:
@@ -241,13 +254,11 @@ def _extract_mentions_tags(content: str) -> tuple[list[str], list[str]]:
 
 
 def _ingest_block(hv: Hive, block_num: int):
-    from .models import db
-
     blk = hv.rpc.get_block(block_num)
     if not blk:
         return 0
     ts = blk.get("timestamp")
-    dt = _parse_timestamp(ts) if isinstance(ts, str) else datetime.now(timezone.utc)
+    dt = _parse_timestamp(ts) if isinstance(ts, str) else _utcnow_naive()
     txs = blk.get("transactions", [])
     inserted = 0
     for tx_idx, tx in enumerate(txs):
@@ -400,8 +411,6 @@ _initialized = False
 
 
 def _ensure_initialized(app=None):
-    from .models import db
-
     global _initialized
     if _initialized:
         return
@@ -414,66 +423,8 @@ def _ensure_initialized(app=None):
             return
     with ctx_app.app_context():
         db.create_all()
-        try:
-            upgrade_schema()
-        except Exception:
-            pass
     start_block_watcher(ctx_app)
     _initialized = True
-
-
-def upgrade_schema():
-    """Lightweight schema upgrades for SQLite (and best-effort for others).
-    Ensures new columns exist without Alembic migrations.
-    """
-    from sqlalchemy import text as _sqltext
-
-    # Check moderation_actions signature columns
-    try:
-        res = db.session.execute(_sqltext("PRAGMA table_info(moderation_actions)"))
-        cols = {row[1] for row in res.fetchall()}
-        stmts = []
-        if "sig_message" not in cols:
-            stmts.append("ALTER TABLE moderation_actions ADD COLUMN sig_message TEXT")
-        if "sig_pubkey" not in cols:
-            stmts.append(
-                "ALTER TABLE moderation_actions ADD COLUMN sig_pubkey VARCHAR(64)"
-            )
-        if "sig_value" not in cols:
-            stmts.append("ALTER TABLE moderation_actions ADD COLUMN sig_value TEXT")
-        for s in stmts:
-            try:
-                db.session.execute(_sqltext(s))
-            except Exception:
-                pass
-        if stmts:
-            db.session.commit()
-    except Exception:
-        # Fallback generic approach (e.g., Postgres)
-        from sqlalchemy import inspect as _inspect
-
-        try:
-            insp = _inspect(db.engine)
-            cols = {c["name"] for c in insp.get_columns("moderation_actions")}
-            if "sig_message" not in cols:
-                db.session.execute(
-                    _sqltext(
-                        "ALTER TABLE moderation_actions ADD COLUMN sig_message TEXT"
-                    )
-                )
-            if "sig_pubkey" not in cols:
-                db.session.execute(
-                    _sqltext(
-                        "ALTER TABLE moderation_actions ADD COLUMN sig_pubkey VARCHAR(64)"
-                    )
-                )
-            if "sig_value" not in cols:
-                db.session.execute(
-                    _sqltext("ALTER TABLE moderation_actions ADD COLUMN sig_value TEXT")
-                )
-            db.session.commit()
-        except Exception:
-            pass
 
 
 def stop_block_watcher(timeout: float = 2.0):

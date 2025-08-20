@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request, session, current_app
 
@@ -24,6 +24,10 @@ api_bp = Blueprint("api", __name__)
 
 def _hidden_trx_subquery():
     return db.session.query(Moderation.trx_id).filter(Moderation.visibility == "hidden")
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @api_bp.route("/tags/trending")
@@ -263,7 +267,7 @@ def api_mentions_seen():
     if "username" not in session:
         return jsonify({"success": False}), 401
     uname = session["username"].lower()
-    now = datetime.now()
+    now = _utcnow_naive()
     state = MentionState.query.get(uname)
     if state is None:
         state = MentionState(username=uname, last_seen=now)
@@ -387,7 +391,7 @@ def mod_hide():
         moderator=moderator,
         action="hide",
         reason=reason,
-        created_at=datetime.utcnow(),
+        created_at=_utcnow_naive(),
         sig_message=data.get("message"),
         sig_pubkey=data.get("pubkey"),
         sig_value=data.get("signature"),
@@ -403,14 +407,14 @@ def mod_hide():
                 visibility="hidden",
                 mod_by=moderator,
                 mod_reason=reason,
-                mod_at=datetime.utcnow(),
+                mod_at=_utcnow_naive(),
             )
             db.session.add(mod)
         else:
             mod.visibility = "hidden"
             mod.mod_by = moderator
             mod.mod_reason = reason
-            mod.mod_at = datetime.utcnow()
+            mod.mod_at = _utcnow_naive()
         hidden = True
     else:
         approvers = (
@@ -430,14 +434,14 @@ def mod_hide():
                     visibility="hidden",
                     mod_by=moderator,
                     mod_reason=reason,
-                    mod_at=datetime.utcnow(),
+                    mod_at=_utcnow_naive(),
                 )
                 db.session.add(mod)
             else:
                 mod.visibility = "hidden"
                 mod.mod_by = moderator
                 mod.mod_reason = reason
-                mod.mod_at = datetime.utcnow()
+                mod.mod_at = _utcnow_naive()
             hidden = True
     db.session.commit()
     return jsonify({"success": True, "hidden": hidden, "quorum": quorum})
@@ -468,7 +472,7 @@ def mod_unhide():
         trx_id=trx_id,
         moderator=moderator,
         action="unhide",
-        created_at=datetime.utcnow(),
+        created_at=_utcnow_naive(),
         sig_message=data.get("message"),
         sig_pubkey=data.get("pubkey"),
         sig_value=data.get("signature"),
@@ -479,6 +483,6 @@ def mod_unhide():
         mod.visibility = "public"
         mod.mod_by = moderator
         mod.mod_reason = None
-        mod.mod_at = datetime.utcnow()
+        mod.mod_at = _utcnow_naive()
     db.session.commit()
     return jsonify({"success": True})
