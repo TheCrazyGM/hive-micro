@@ -57,7 +57,6 @@ def markdown_render(content: str) -> str:
             txt,
             extensions=[
                 "fenced_code",
-                "nl2br",
                 "codehilite",  # syntax highlighting via Pygments
             ],
             extension_configs={
@@ -66,7 +65,7 @@ def markdown_render(content: str) -> str:
                     "noclasses": False,  # prefer CSS classes for theming
                     "pygments_style": "default",
                     "css_class": "codehilite",
-                    "wrapcode": False,
+                    "wrapcode": True,
                 },
             },
             output_format="html5",
@@ -132,27 +131,6 @@ def markdown_render(content: str) -> str:
 
             safe = _re.sub(
                 r"<img(?![^>]*\bloading=)([^>]*)>", r'<img loading="lazy"\1>', safe
-            )
-        except Exception:
-            pass
-
-        # Normalize code blocks: ensure <div class="codehilite"> wraps the <pre> content
-        try:
-            import re as _re_code
-
-            # Merge pattern: empty codehilite div immediately followed by a pre
-            safe = _re_code.sub(
-                r"<div[^>]*class=\"[^\"]*codehilite[^\"]*\"[^>]*>\s*</div>\s*(<pre[\s\S]*?>[\s\S]*?<\/pre>)",
-                r"<div class=\"codehilite\">\1</div>",
-                safe,
-                flags=_re_code.IGNORECASE,
-            )
-            # Add codehilite class to orphan pre blocks (no existing class)
-            safe = _re_code.sub(
-                r"<pre(?![^>]*\bclass=)([^>]*)>",
-                r"<pre class=\"codehilite\"\1>",
-                safe,
-                flags=_re_code.IGNORECASE,
             )
         except Exception:
             pass
