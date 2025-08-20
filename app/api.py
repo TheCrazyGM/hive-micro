@@ -9,10 +9,21 @@ from .helpers import (
     _verify_signature_and_key,
     markdown_render,
 )
-from .models import Checkpoint, Message, MentionState, db
+from .models import (
+    Checkpoint,
+    Message,
+    MentionState,
+    Moderation,
+    ModerationAction,
+    db,
+)
 
 
 api_bp = Blueprint("api", __name__)
+
+
+def _hidden_trx_subquery():
+    return db.session.query(Moderation.trx_id).filter(Moderation.visibility == "hidden")
 
 
 @api_bp.route("/tags/trending")
@@ -61,6 +72,8 @@ def api_timeline():
     tag_filter = request.args.get("tag")
 
     q = Message.query
+    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
+    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
     if cursor:
         try:
             dt = datetime.fromisoformat(cursor)
@@ -118,6 +131,7 @@ def api_timeline_new_count():
     tag_filter = request.args.get("tag")
 
     q = Message.query.filter(Message.timestamp > dt)
+    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
 
     if following_flag and session.get("username"):
         flw = _get_following_usernames(session["username"]) or set()
@@ -146,6 +160,26 @@ def api_post(trx_id: str):
     m = Message.query.filter_by(trx_id=trx_id).first()
     if not m:
         return jsonify({"error": "not found"}), 404
+    # Moderation: show removed stub to non-moderators
+    mod = Moderation.query.filter_by(trx_id=trx_id).first()
+    hidden = bool(mod and mod.visibility == "hidden")
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if hidden and not is_mod:
+        reason = mod.mod_reason if mod and mod.mod_reason else None
+        return jsonify(
+            {
+                "item": {
+                    "trx_id": m.trx_id,
+                    "timestamp": m.timestamp.isoformat(),
+                    "author": m.author,
+                    "removed": True,
+                    "mod_reason": reason,
+                },
+                "replies": [],
+            }
+        )
     item = {
         "trx_id": m.trx_id,
         "block_num": m.block_num,
@@ -179,6 +213,32 @@ def api_post(trx_id: str):
     return jsonify({"item": item, "replies": replies})
 
 
+@api_bp.route("/mod/log/<trx_id>")
+def mod_log(trx_id: str):
+    if "username" not in session:
+        return jsonify({"items": []})
+    moderator = session["username"].lower()
+    if moderator not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"items": []})
+    rows = (
+        ModerationAction.query.filter_by(trx_id=trx_id)
+        .order_by(ModerationAction.created_at.desc())
+        .all()
+    )
+    items = [
+        {
+            "id": a.id,
+            "trx_id": a.trx_id,
+            "moderator": a.moderator,
+            "action": a.action,
+            "reason": a.reason,
+            "created_at": a.created_at.isoformat(),
+        }
+        for a in rows
+    ]
+    return jsonify({"items": items})
+
+
 @api_bp.route("/mentions/count")
 def api_mentions_count():
     if "username" not in session:
@@ -186,6 +246,7 @@ def api_mentions_count():
     uname = session["username"].lower()
     like_pattern = f'%"{uname}"%'
     q = Message.query.filter(Message.mentions.like(like_pattern))
+    q = q.filter(~Message.trx_id.in_(_hidden_trx_subquery()))
     state = MentionState.query.get(uname)
     if state and state.last_seen:
         q = q.filter(Message.timestamp > state.last_seen)
@@ -293,3 +354,127 @@ def login():
 
 
 # With url_prefix '/api/v1', '/login' is exposed as '/api/v1/login'
+@api_bp.route("/mod/hide", methods=["POST"])
+def mod_hide():
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+    moderator = session["username"].lower()
+    if moderator not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    reason = (data.get("reason") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+    if current_app.config.get("MOD_REASON_REQUIRED") and not reason:
+        return jsonify({"success": False, "error": "reason required"}), 400
+    # Optional signature verification
+    if current_app.config.get("MOD_REQUIRE_SIGNATURE"):
+        sig = (data.get("signature") or "").strip()
+        pubkey = (data.get("pubkey") or "").strip()
+        message = (data.get("message") or "").strip()
+        if not (sig and pubkey and message):
+            return jsonify({"success": False, "error": "signature required"}), 400
+        ok, invalid = _verify_signature_and_key(moderator, pubkey, message, sig)
+        if not ok:
+            return jsonify({"success": False, "error": "bad signature"}), 401
+    act = ModerationAction(
+        trx_id=trx_id,
+        moderator=moderator,
+        action="hide",
+        reason=reason,
+        created_at=datetime.utcnow(),
+        sig_message=data.get("message"),
+        sig_pubkey=data.get("pubkey"),
+        sig_value=data.get("signature"),
+    )
+    db.session.add(act)
+    quorum = int(current_app.config.get("MOD_QUORUM", 1))
+    hidden = False
+    if quorum <= 1:
+        mod = Moderation.query.filter_by(trx_id=trx_id).first()
+        if mod is None:
+            mod = Moderation(
+                trx_id=trx_id,
+                visibility="hidden",
+                mod_by=moderator,
+                mod_reason=reason,
+                mod_at=datetime.utcnow(),
+            )
+            db.session.add(mod)
+        else:
+            mod.visibility = "hidden"
+            mod.mod_by = moderator
+            mod.mod_reason = reason
+            mod.mod_at = datetime.utcnow()
+        hidden = True
+    else:
+        approvers = (
+            db.session.query(ModerationAction.moderator)
+            .filter(
+                ModerationAction.trx_id == trx_id,
+                ModerationAction.action == "hide",
+            )
+            .distinct()
+            .count()
+        )
+        if approvers >= quorum:
+            mod = Moderation.query.filter_by(trx_id=trx_id).first()
+            if mod is None:
+                mod = Moderation(
+                    trx_id=trx_id,
+                    visibility="hidden",
+                    mod_by=moderator,
+                    mod_reason=reason,
+                    mod_at=datetime.utcnow(),
+                )
+                db.session.add(mod)
+            else:
+                mod.visibility = "hidden"
+                mod.mod_by = moderator
+                mod.mod_reason = reason
+                mod.mod_at = datetime.utcnow()
+            hidden = True
+    db.session.commit()
+    return jsonify({"success": True, "hidden": hidden, "quorum": quorum})
+
+
+@api_bp.route("/mod/unhide", methods=["POST"])
+def mod_unhide():
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+    moderator = session["username"].lower()
+    if moderator not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+    # Optional signature verification
+    if current_app.config.get("MOD_REQUIRE_SIGNATURE"):
+        sig = (data.get("signature") or "").strip()
+        pubkey = (data.get("pubkey") or "").strip()
+        message = (data.get("message") or "").strip()
+        if not (sig and pubkey and message):
+            return jsonify({"success": False, "error": "signature required"}), 400
+        ok, invalid = _verify_signature_and_key(moderator, pubkey, message, sig)
+        if not ok:
+            return jsonify({"success": False, "error": "bad signature"}), 401
+    act = ModerationAction(
+        trx_id=trx_id,
+        moderator=moderator,
+        action="unhide",
+        created_at=datetime.utcnow(),
+        sig_message=data.get("message"),
+        sig_pubkey=data.get("pubkey"),
+        sig_value=data.get("signature"),
+    )
+    db.session.add(act)
+    mod = Moderation.query.filter_by(trx_id=trx_id).first()
+    if mod is not None:
+        mod.visibility = "public"
+        mod.mod_by = moderator
+        mod.mod_reason = None
+        mod.mod_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"success": True})

@@ -28,3 +28,29 @@ class MentionState(db.Model):
     __tablename__ = "mention_state"
     username = db.Column(db.String(32), primary_key=True)
     last_seen = db.Column(db.DateTime, nullable=True, index=True)
+
+
+class Moderation(db.Model):
+    __tablename__ = "moderation"
+    # One row per moderated trx_id
+    trx_id = db.Column(db.String(64), primary_key=True)
+    visibility = db.Column(
+        db.String(16), nullable=False, default="public"
+    )  # public|hidden
+    mod_by = db.Column(db.String(32), nullable=True)
+    mod_reason = db.Column(db.Text, nullable=True)
+    mod_at = db.Column(db.DateTime, nullable=True, index=True)
+
+
+class ModerationAction(db.Model):
+    __tablename__ = "moderation_actions"
+    id = db.Column(db.Integer, primary_key=True)
+    trx_id = db.Column(db.String(64), index=True, nullable=False)
+    moderator = db.Column(db.String(32), index=True, nullable=False)
+    action = db.Column(db.String(16), nullable=False)  # hide|unhide
+    reason = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, index=True)
+    # Optional signature audit
+    sig_message = db.Column(db.Text, nullable=True)
+    sig_pubkey = db.Column(db.String(64), nullable=True)
+    sig_value = db.Column(db.Text, nullable=True)

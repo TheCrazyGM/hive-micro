@@ -10,8 +10,8 @@ from flask import (
     url_for,
 )
 from nectar.account import Account
-from .models import Message
-from .helpers import markdown_render
+from .models import Message, Moderation
+from .helpers import markdown_render, _get_following_usernames
 
 
 ui_bp = Blueprint("ui", __name__)
@@ -49,23 +49,8 @@ def new_post():
 def profile():
     if "username" not in session:
         return redirect(url_for("ui.index"))
-    username = session["username"]
-    account = Account(username)
-    meta = account.get("posting_json_metadata") or account.get("json_metadata") or {}
-    if isinstance(meta, str):
-        try:
-            meta = json.loads(meta)
-        except Exception:
-            meta = {}
-    profile = meta.get("profile") if isinstance(meta, dict) else {}
-    if not isinstance(profile, dict):
-        profile = {}
-    return render_template(
-        "pages/profile.html",
-        username=username,
-        profile=profile,
-        raw=meta,
-    )
+    # Redirect to unified public profile view for the logged-in user
+    return redirect(url_for("ui.public_profile", username=session["username"]))
 
 
 @ui_bp.route("/u/<username>")
@@ -83,8 +68,26 @@ def public_profile(username: str):
     prof = meta.get("profile") if isinstance(meta, dict) else {}
     if not isinstance(prof, dict):
         prof = {}
+    # Follow state
+    is_following = False
+    is_self = False
+    if "username" in session:
+        cur = (session["username"] or "").strip().lower()
+        target = uname.strip().lower()
+        is_self = cur == target
+        if not is_self:
+            try:
+                flw = _get_following_usernames(cur) or set()
+                is_following = target in flw
+            except Exception:
+                is_following = False
     return render_template(
-        "pages/user_profile.html", username=uname, profile=prof, raw=meta
+        "pages/user_profile.html",
+        username=uname,
+        profile=prof,
+        raw=meta,
+        is_following=is_following,
+        is_self=is_self,
     )
 
 
@@ -96,6 +99,26 @@ def post_page(trx_id: str):
     m = Message.query.filter_by(trx_id=trx_id).first()
     if not m:
         return render_template("errors/404.html"), 404
+    # Moderation logic
+    mod = Moderation.query.filter_by(trx_id=trx_id).first()
+    hidden = bool(mod and mod.visibility == "hidden")
+    is_mod = session.get("username", "").lower() in (
+        os.environ.get("HIVE_MICRO_MODERATORS", "").lower().split(",")
+        if os.environ.get("HIVE_MICRO_MODERATORS")
+        else []
+    )
+    if hidden and not is_mod:
+        item = {
+            "trx_id": m.trx_id,
+            "timestamp": m.timestamp.isoformat(),
+            "author": m.author,
+            "removed": True,
+            "mod_reason": mod.mod_reason if mod and mod.mod_reason else None,
+        }
+        replies = []
+        return render_template(
+            "pages/post.html", trx_id=trx_id, item=item, replies=replies
+        )
     item = {
         "trx_id": m.trx_id,
         "block_num": m.block_num,
@@ -125,6 +148,11 @@ def post_page(trx_id: str):
             "reply_to": r.reply_to,
         }
         for r in reps
+        if not (
+            Moderation.query.filter_by(trx_id=r.trx_id).first()
+            and Moderation.query.filter_by(trx_id=r.trx_id).first().visibility
+            == "hidden"
+        )
     ]
     return render_template("pages/post.html", trx_id=trx_id, item=item, replies=replies)
 

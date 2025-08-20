@@ -36,6 +36,12 @@ Copy `sample.env` to `.env` and adjust as needed.
 - `HIVE_MICRO_APP_ID`: App id for `custom_json` (default `hive.micro`).
 - `HIVE_NODES`: Optional comma-separated list of Hive API nodes.
 - `HIVE_MICRO_WATCHER`: `1` to enable background watcher, `0` to disable (default `1`).
+- `HIVE_MICRO_MAX_LEN`: Maximum characters for composer and previews (default `512`).
+- Moderation:
+  - `HIVE_MICRO_MODERATORS`: Comma-separated moderator usernames (lowercase).
+  - `HIVE_MICRO_MOD_QUORUM`: Number of approvals required to hide a post (default `1`).
+  - `HIVE_MICRO_MOD_REASON_REQUIRED`: Require a reason to hide (0/1, default `0`).
+  - `HIVE_MICRO_MOD_REQUIRE_SIG`: Require per-action Keychain signature for moderator actions (0/1, default `0`).
 
 Notes
 - The backend filters ingested posts using `APP_ID` and the frontend broadcasts with the same id. The value is injected for client scripts as `window.HIVE_APP_ID`.
@@ -83,6 +89,10 @@ Base URL: `/api/v1`
 - `GET /tags/trending`
 - `GET /status` — returns `{ app_id, messages, last_block }`
 - `POST /login` — verifies Keychain signature and creates session
+- Moderation:
+  - `POST /mod/hide` `{ trx_id, reason? }` — moderator-only, hides when approvals >= quorum
+  - `POST /mod/unhide` `{ trx_id }` — moderator-only, restores visibility
+  - `GET /mod/log/<trx_id>` — moderator-only action log for a post
 
 UI routes
 
@@ -107,6 +117,11 @@ UI routes
 - Broadcast via Hive Keychain.
 - Watcher ingests blocks and stores posts where `payload.id == APP_ID`.
 
+Content length
+- The composer enforces `HIVE_MICRO_MAX_LEN` on the client with a live counter.
+- The API truncates content to this length for timeline and mentions responses so previews stay concise.
+- The single post endpoint and server-rendered permalink show full content.
+
 ## Rendering and safety
 
 - Server `helpers.markdown_render()`:
@@ -120,6 +135,8 @@ UI routes
 - Modular background watcher using the real app context and clean shutdown at exit.
 - Template organization with layout/partials/pages/errors; reusable post card macros.
 - Single source of truth for APP_ID across backend and frontend.
+- UI polish: Replaced alerts with Bootstrap toasts; improved light/dark theme surfaces and transitions; high-contrast tag chips; smoother trending refresh without flicker; unified image scaling inside cards; New Post page now a card with Markdown tip and live counter.
+ - Moderation (soft-hide): optional moderators with quorum; timelines exclude hidden posts; permalinks show a transparent “Removed by moderators” stub with optional reason; actions audited.
 
 ## License
 

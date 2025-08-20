@@ -31,6 +31,19 @@ def create_app():
         app.config["CONTENT_MAX_LEN"] = int(os.environ.get("HIVE_MICRO_MAX_LEN", "512"))
     except Exception:
         app.config["CONTENT_MAX_LEN"] = 512
+    # Moderation config
+    mods = os.environ.get("HIVE_MICRO_MODERATORS", "").strip()
+    app.config["MODERATORS"] = [u.strip().lower() for u in mods.split(",") if u.strip()]
+    try:
+        app.config["MOD_QUORUM"] = int(os.environ.get("HIVE_MICRO_MOD_QUORUM", "1"))
+    except Exception:
+        app.config["MOD_QUORUM"] = 1
+    app.config["MOD_REASON_REQUIRED"] = os.environ.get(
+        "HIVE_MICRO_MOD_REASON_REQUIRED", "0"
+    ) in ("1", "true", "yes", "on")
+    app.config["MOD_REQUIRE_SIGNATURE"] = os.environ.get(
+        "HIVE_MICRO_MOD_REQUIRE_SIG", "0"
+    ) in ("1", "true", "yes", "on")
 
     db.init_app(app)
     cache.init_app(app)

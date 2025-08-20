@@ -190,6 +190,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     rightWrap.appendChild(replyBtn);
+    if (window.HIVE_IS_MOD) {
+      const hideBtn = document.createElement('button');
+      hideBtn.type = 'button';
+      hideBtn.className = 'btn btn-sm btn-outline-danger';
+      hideBtn.textContent = 'Hide';
+      hideBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+          const payload = { trx_id: item.trx_id };
+          if (window.HIVE_MOD_REQUIRE_SIG) {
+            const moderator = localStorage.getItem('hive.username');
+            if (!moderator) { if (window.showToast) showToast('Please login first', 'warning'); return; }
+            if (!window.hive_keychain) { if (window.showToast) showToast('Hive Keychain not detected', 'warning'); return; }
+            const msg = `moderation:hide:${item.trx_id}:${new Date().toISOString()}`;
+            await new Promise((resolve) => {
+              window.hive_keychain.requestSignBuffer(moderator, msg, 'Posting', function (res) {
+                if (res && res.success) {
+                  payload.message = msg;
+                  payload.signature = res.result;
+                  payload.pubkey = res.publicKey || (res.data && res.data.publicKey) || null;
+                  resolve();
+                } else { resolve(); }
+              });
+            });
+            if (!payload.signature) return;
+          }
+          const r = await fetch('/api/v1/mod/hide', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.success) throw new Error(d.error || 'Request failed');
+          if (window.showToast) showToast('Post hidden', 'success');
+          card.remove();
+        } catch (err) {
+          if (window.showToast) showToast('Failed to hide: ' + err.message, 'danger');
+        }
+      });
+      rightWrap.appendChild(hideBtn);
+    }
 
     meta.appendChild(ts);
     meta.appendChild(rightWrap);
