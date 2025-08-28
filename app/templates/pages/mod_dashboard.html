@@ -6,9 +6,13 @@
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="mb-0">Moderation</h2>
         <div class="d-flex gap-2">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="onlyHiddenToggle">
-            <label class="form-check-label" for="onlyHiddenToggle">Hidden only</label>
+          <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0" for="statusFilter">Filter</label>
+            <select id="statusFilter" class="form-select form-select-sm" style="min-width: 12rem;">
+              <option value="all" selected>All</option>
+              <option value="hidden">Hidden only</option>
+              <option value="pending">Pending quorum</option>
+            </select>
           </div>
           <button id="refreshBtn" class="btn btn-outline-secondary btn-sm">Refresh</button>
         </div>

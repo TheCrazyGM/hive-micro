@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.getElementById('modTableBody');
   const loadMoreBtn = document.getElementById('loadMoreBtn');
-  const onlyHiddenToggle = document.getElementById('onlyHiddenToggle');
+  const statusFilter = document.getElementById('statusFilter');
   const refreshBtn = document.getElementById('refreshBtn');
   let cursor = null;
   let loading = false;
@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const p = new URLSearchParams();
       p.set('limit','20');
       if (cursor) p.set('cursor', cursor);
-      if (onlyHiddenToggle.checked) p.set('only_hidden','1');
+      const status = (statusFilter?.value || 'all');
+      if (status && status !== 'all') p.set('status', status);
       const r = await fetch(`/api/v1/mod/list?${p.toString()}`);
       const d = await r.json();
       const items = Array.isArray(d.items) ? d.items : [];
@@ -26,13 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const tr = document.createElement('tr');
         const dt = new Date(it.timestamp).toLocaleString();
         const tags = Array.isArray(it.tags) ? it.tags.map(t=>`#${esc(t)}`).join(' ') : '';
-        const status = it.hidden ? `<span class="badge text-bg-warning">Hidden</span>` : '<span class="badge text-bg-success">Public</span>';
+        const pendingInfo = it.pending ? `<span class="badge text-bg-info">Pending ${Number(it.approvals)||0}/${Number(it.quorum)||0}</span>` : '';
+        const statusHtml = it.hidden ? `<span class="badge text-bg-warning">Hidden</span>` : '<span class="badge text-bg-success">Public</span>';
         tr.innerHTML = `
           <td class="small text-muted">${dt}</td>
           <td><a href="/u/${encodeURIComponent(String(it.author).toLowerCase())}">@${esc(it.author)}</a></td>
           <td style="max-width: 40ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(it.content || '')}</td>
           <td class="small text-muted">${tags}</td>
-          <td>${status}</td>
+          <td class="d-flex gap-1 align-items-center">${statusHtml}${pendingInfo ? ' ' + pendingInfo : ''}</td>
           <td class="text-end">
             <div class="btn-group btn-group-sm">
               <a class="btn btn-outline-secondary" href="/p/${encodeURIComponent(it.trx_id)}">Open</a>
@@ -119,5 +121,5 @@ document.addEventListener('DOMContentLoaded', () => {
   load(true);
   loadMoreBtn.addEventListener('click', ()=> load(false));
   refreshBtn.addEventListener('click', ()=> load(true));
-  onlyHiddenToggle.addEventListener('change', ()=> load(true));
+  statusFilter.addEventListener('change', ()=> load(true));
 });

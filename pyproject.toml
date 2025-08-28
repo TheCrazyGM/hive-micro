@@ -14,3 +14,9 @@ dependencies = [
   "pygments>=2.18.0",
   "python-dotenv>=1.1.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.12.9",
+]

@@ -377,6 +377,9 @@ def mod_list():
         limit = 20
     limit = max(1, min(limit, 100))
     only_hidden = request.args.get("only_hidden") == "1"
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in ("all", "hidden", "pending"):
+        status = "all"
     cursor = request.args.get("cursor")
     q = Message.query
     if cursor:
@@ -388,11 +391,43 @@ def mod_list():
     q = q.order_by(Message.timestamp.desc()).limit(limit)
     rows = q.all()
     items = []
+    quorum = int(current_app.config.get("MOD_QUORUM", 1))
     for m in rows:
         mod = Moderation.query.filter_by(trx_id=m.trx_id).first()
         hidden = bool(mod and mod.visibility == "hidden")
+
+        # Compute approvals since last unhide
+        last_unhide = (
+            db.session.query(ModerationAction.created_at)
+            .filter(
+                ModerationAction.trx_id == m.trx_id,
+                ModerationAction.action == "unhide",
+            )
+            .order_by(ModerationAction.created_at.desc())
+            .first()
+        )
+        cutoff = last_unhide[0] if last_unhide else None
+        approvals_q = db.session.query(ModerationAction.moderator).filter(
+            ModerationAction.trx_id == m.trx_id,
+            ModerationAction.action == "hide",
+        )
+        if cutoff is not None:
+            approvals_q = approvals_q.filter(ModerationAction.created_at > cutoff)
+        approvals = approvals_q.distinct().count()
+
+        # Determine pending state: has approvals but below quorum and not hidden yet
+        pending = (
+            (not hidden) and (quorum > 1) and (approvals > 0) and (approvals < quorum)
+        )
+
+        # Back-compat only_hidden or new status filter
         if only_hidden and not hidden:
             continue
+        if status == "hidden" and not hidden:
+            continue
+        if status == "pending" and not pending:
+            continue
+
         items.append(
             {
                 "trx_id": m.trx_id,
@@ -401,6 +436,9 @@ def mod_list():
                 "content": m.content,
                 "tags": json.loads(m.tags) if m.tags else [],
                 "hidden": hidden,
+                "pending": pending,
+                "approvals": approvals,
+                "quorum": quorum,
                 "mod_reason": (mod.mod_reason if (mod and mod.mod_reason) else None),
             }
         )
