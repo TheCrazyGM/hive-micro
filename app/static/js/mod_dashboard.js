@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td><a href="/u/${encodeURIComponent(String(it.author).toLowerCase())}">@${esc(it.author)}</a></td>
           <td style="max-width: 40ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(it.content || '')}</td>
           <td class="small text-muted">${tags}</td>
-          <td class="d-flex gap-1 align-items-center">${statusHtml}${pendingInfo ? ' ' + pendingInfo : ''}</td>
+          <td><div class="d-flex gap-1 align-items-center">${statusHtml}${pendingInfo ? ' ' + pendingInfo : ''}</div></td>
           <td class="text-end">
             <div class="btn-group btn-group-sm">
               <a class="btn btn-outline-secondary" href="/p/${encodeURIComponent(it.trx_id)}">Open</a>
