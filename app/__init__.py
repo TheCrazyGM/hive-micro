@@ -3,7 +3,7 @@ import os
 import secrets
 from datetime import datetime
 
-from flask import Flask, abort, request, session
+from flask import Flask, abort, request, session, render_template
 from markupsafe import Markup, escape
 
 from .extensions import cache
@@ -142,5 +142,23 @@ def create_app():
         # Render a time tag with a recognizable class for client enhancement
         safe_iso = escape(iso)
         return Markup(f'<time class="ts-local" datetime="{safe_iso}">{safe_iso}</time>')
+
+    # --- Application-wide error handlers ---
+    @app.errorhandler(401)
+    def _app_401(error):
+        return render_template("errors/401.html"), 401
+
+    @app.errorhandler(403)
+    def _app_403(error):
+        return render_template("errors/403.html"), 403
+
+    @app.errorhandler(404)
+    def _app_404(error):
+        # Handles routes that do not match any blueprint
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def _app_500(error):
+        return render_template("errors/500.html"), 500
 
     return app

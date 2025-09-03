@@ -9,7 +9,11 @@ This module exposes `app`, created via the application's factory.
 
 import os
 
+from dotenv import load_dotenv
+
 from . import create_app
+
+load_dotenv()
 
 # Create the Flask application via the factory
 app = create_app()
