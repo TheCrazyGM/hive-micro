@@ -275,6 +275,14 @@ html[data-bs-theme="dark"] .tag-chip:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
+  color: var(--bs-secondary-color);
+}
+
+/* Full txid variant: same visual style, no truncation */
+.trx-hash-full {
+  max-width: none;
+  white-space: normal;
+  word-break: break-all;
 }
 
 /* Ensure the left meta column can shrink/truncate in flex */

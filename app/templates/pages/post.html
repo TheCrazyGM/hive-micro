@@ -4,7 +4,7 @@
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-md-10 col-lg-9 col-xl-8" style="max-width: 960px;">
-      {{ posts.post_card(item) }}
+      {{ posts.post_card(item, True) }}
       {% if session.username and (session.username|lower) in (config['MODERATORS'] or []) %}
         <div class="card mb-3">
           <div class="card-body">

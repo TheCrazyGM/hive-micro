@@ -1,4 +1,4 @@
-{% macro post_card(item) %}
+{% macro post_card(item, full_trx=False) %}
   <div class="card mb-3">
     <div class="card-body">
       {% if item.removed %}
@@ -6,12 +6,15 @@
         {% if item.mod_reason %}
           <div class="small text-muted">Reason: {{ item.mod_reason }}</div>
         {% endif %}
-        <div class="mt-2 small text-muted">
+        <div class="post-meta mt-2 small text-muted">
           {{ item.timestamp }}
           {% if item.trx_id %}
-            {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
-            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx
-              }}</code></a>
+            {% if full_trx %}
+              · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash trx-hash-full">{{ item.trx_id }}</code></a>
+            {% else %}
+              {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
+              · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+            {% endif %}
           {% endif %}
         </div>
       {% else %}
@@ -30,12 +33,16 @@
           </div>
         {% endif %}
         <div class="mt-2 d-flex justify-content-between align-items-center flex-nowrap gap-2">
-          <div class="small text-muted">
+          <div class="post-meta small text-muted">
             {# timestamp and trx id along the bottom #}
             <time class="ts-local" datetime="{{ item.timestamp }}">{{ item.timestamp }}</time>
             {% if item.trx_id %}
-              {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
-              · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+              {% if full_trx %}
+                · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash trx-hash-full">{{ item.trx_id }}</code></a>
+              {% else %}
+                {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
+                · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+              {% endif %}
             {% endif %}
             {% if item.reply_to %}
               · replying to <a class="text-decoration-none" href="/p/{{ item.reply_to }}">parent</a>
