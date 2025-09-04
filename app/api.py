@@ -78,6 +78,7 @@ def api_timeline():
     cursor = request.args.get("cursor")
     following_flag = request.args.get("following", "0") == "1"
     tag_filter = request.args.get("tag")
+    author_filter = request.args.get("author")
 
     q = Message.query
     include_hidden = request.args.get("include_hidden") == "1"
@@ -103,6 +104,10 @@ def api_timeline():
     if tag_filter:
         like_pattern = f'%"{tag_filter.lower()}"%'
         q = q.filter(Message.tags.like(like_pattern))
+
+    # Optional author filter for profile timelines
+    if author_filter:
+        q = q.filter(Message.author == author_filter)
 
     q = q.order_by(Message.timestamp.desc()).limit(limit)
 
