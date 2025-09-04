@@ -85,12 +85,16 @@ HIVE_MICRO_WATCHER=0 python run.py
 Base URL: `/api/v1`
 
 - `GET /timeline`
-  - Params: `limit`, `cursor` (ISO), `following=1`, `tag`
+  - Params: `limit`, `cursor` (ISO), `following=1`, `tag`, `author`
+  - Response items include `hearts` (count) and `viewer_hearted` (boolean)
 - `GET /timeline/new_count`
-- `GET /post/<trx_id>`
-- `GET /mentions`
+- `GET /post/<trx_id>` — returns `item` and `replies`, each with `hearts` and `viewer_hearted`
+- `GET /mentions` — now includes `hearts` and `viewer_hearted` for each item
 - `GET /mentions/count`
 - `POST /mentions/seen`
+- Appreciation:
+  - `POST /heart` `{ trx_id }` — adds a heart for the logged-in user
+  - `POST /unheart` `{ trx_id }` — removes the user’s heart
 - `GET /tags/trending`
 - `GET /status` — returns `{ app_id, messages, last_block }`
 - `POST /login` — verifies Keychain signature and creates session
@@ -113,6 +117,7 @@ UI routes
 - `messages`: posts (`trx_id`, `block_num`, `timestamp`, `author`, `content`, optional `mentions/tags` as JSON, `reply_to`, `raw_json`).
 - `checkpoints`: last processed block for ingestion.
 - `mention_state`: per-username `last_seen` to compute unread counts.
+- `appreciations`: hearts/likes per post (`trx_id`, `username`, `created_at`). Unique constraint on (`trx_id`, `username`).
 
 ## Posting flow
 
@@ -134,6 +139,16 @@ Content length
   - Converts `@user` and `#tag` to internal links pre-Markdown.
   - Renders Markdown and sanitizes HTML via Bleach.
 - Frontend prefers server-provided `item.html` and falls back to linkified text.
+
+## Appreciation (Hearts)
+
+- Backend aggregates hearts for timelines, mentions, and single post view; responses include `hearts` and `viewer_hearted` when user is logged in.
+- Frontend renders a heart button with live count on:
+  - Feed (`static/js/feed.js`)
+  - User profile posts (`static/js/user_profile.js`)
+  - Mentions (`static/js/mentions.js`)
+  - Single post + replies (`templates/partials/posts.html` wired by `static/js/post_view.js`)
+- API calls require an authenticated session; CSRF header is read from `window.getCsrfToken()`, `<meta name="csrf-token">`, or `window.CSRF_TOKEN`.
 
 ## Refactor highlights (current)
 
