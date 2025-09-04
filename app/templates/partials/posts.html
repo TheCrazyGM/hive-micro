@@ -29,17 +29,32 @@
             {% endfor %}
           </div>
         {% endif %}
-        <div class="mt-2 small text-muted">
-      {# timestamp and trx id along the bottom #}
-          <time class="ts-local" datetime="{{ item.timestamp }}">{{ item.timestamp }}</time>
-          {% if item.trx_id %}
-            {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
-            · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx
-              }}</code></a>
-          {% endif %}
-          {% if item.reply_to %}
-            · replying to <a class="text-decoration-none" href="/p/{{ item.reply_to }}">parent</a>
-          {% endif %}
+        <div class="mt-2 d-flex justify-content-between align-items-center flex-nowrap gap-2">
+          <div class="small text-muted">
+            {# timestamp and trx id along the bottom #}
+            <time class="ts-local" datetime="{{ item.timestamp }}">{{ item.timestamp }}</time>
+            {% if item.trx_id %}
+              {% set short_trx = item.trx_id[:8] ~ '…' ~ item.trx_id[-8:] %}
+              · trx: <a class="text-decoration-none" href="/p/{{ item.trx_id }}"><code class="trx-hash">{{ short_trx }}</code></a>
+            {% endif %}
+            {% if item.reply_to %}
+              · replying to <a class="text-decoration-none" href="/p/{{ item.reply_to }}">parent</a>
+            {% endif %}
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            {% if item.trx_id %}
+              {% set heart_count = (item.hearts if item.hearts is not none else 0) %}
+              {% set hearted = (item.viewer_hearted if item.viewer_hearted is not none else false) %}
+              <button
+                type="button"
+                class="heart-btn {{ 'btn btn-sm btn-danger' if hearted else 'btn btn-sm btn-outline-danger' }}"
+                data-trx-id="{{ item.trx_id }}"
+                data-hearted="{{ '1' if hearted else '0' }}"
+              >
+                ❤ <span class="ms-1 heart-count">{{ heart_count }}</span>
+              </button>
+            {% endif %}
+          </div>
         </div>
       {% endif %}
     </div>

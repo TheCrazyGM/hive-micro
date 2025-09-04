@@ -54,3 +54,15 @@ class ModerationAction(db.Model):
     sig_message = db.Column(db.Text, nullable=True)
     sig_pubkey = db.Column(db.String(64), nullable=True)
     sig_value = db.Column(db.Text, nullable=True)
+
+
+class Appreciation(db.Model):
+    __tablename__ = "appreciations"
+    id = db.Column(db.Integer, primary_key=True)
+    trx_id = db.Column(db.String(64), index=True, nullable=False)
+    username = db.Column(db.String(32), index=True, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("trx_id", "username", name="uq_appreciation_trx_user"),
+    )

@@ -16,6 +16,7 @@ from .models import (
     Message,
     Moderation,
     ModerationAction,
+    Appreciation,
     db,
 )
 
@@ -118,6 +119,29 @@ def api_timeline():
     is_mod = session.get("username", "").lower() in (
         current_app.config.get("MODERATORS") or []
     )
+
+    # --- Appreciation aggregation ---
+    post_ids = [m.trx_id for m in posts]
+    heart_counts_map = {}
+    viewer_hearts = set()
+    if post_ids:
+        rows = (
+            db.session.query(Appreciation.trx_id, db.func.count(Appreciation.id))
+            .filter(Appreciation.trx_id.in_(post_ids))
+            .group_by(Appreciation.trx_id)
+            .all()
+        )
+        heart_counts_map = {trx: cnt for trx, cnt in rows}
+        if session.get("username"):
+            viewer = session["username"].lower()
+            you_rows = (
+                db.session.query(Appreciation.trx_id)
+                .filter(Appreciation.trx_id.in_(post_ids))
+                .filter(Appreciation.username == viewer)
+                .all()
+            )
+            viewer_hearts = {r[0] for r in you_rows}
+
     for m in posts:
         hidden_flag = False
         mod_reason = None
@@ -138,6 +162,8 @@ def api_timeline():
                 "mentions": json.loads(m.mentions) if m.mentions else [],
                 "tags": json.loads(m.tags) if m.tags else [],
                 "reply_to": m.reply_to,
+                "hearts": int(heart_counts_map.get(m.trx_id, 0)),
+                "viewer_hearted": bool(m.trx_id in viewer_hearts),
                 **(
                     {"hidden": hidden_flag, "mod_reason": mod_reason}
                     if (include_hidden and is_mod)
@@ -217,6 +243,7 @@ def api_post(trx_id: str):
                 "replies": [],
             }
         )
+    # Hearts aggregation for main post and replies
     item = {
         "trx_id": m.trx_id,
         "block_num": m.block_num,
@@ -232,22 +259,107 @@ def api_post(trx_id: str):
     replies_q = Message.query.filter_by(reply_to=trx_id).order_by(
         Message.timestamp.asc()
     )
-    replies = [
-        {
-            "trx_id": r.trx_id,
-            "block_num": r.block_num,
-            "timestamp": r.timestamp.isoformat(),
-            "author": r.author,
-            "type": r.type,
-            "content": r.content,
-            "html": markdown_render(r.content),
-            "mentions": json.loads(r.mentions) if r.mentions else [],
-            "tags": json.loads(r.tags) if r.tags else [],
-            "reply_to": r.reply_to,
-        }
-        for r in replies_q.all()
-    ]
+    replies_rows = replies_q.all()
+
+    # Batch load hearts for item and replies
+    heart_ids = [m.trx_id for m in replies_rows] + [m.trx_id]
+    counts_map = {}
+    you_set = set()
+    if heart_ids:
+        rows = (
+            db.session.query(Appreciation.trx_id, db.func.count(Appreciation.id))
+            .filter(Appreciation.trx_id.in_(heart_ids))
+            .group_by(Appreciation.trx_id)
+            .all()
+        )
+        counts_map = {trx: cnt for trx, cnt in rows}
+        if session.get("username"):
+            viewer = session["username"].lower()
+            yr = (
+                db.session.query(Appreciation.trx_id)
+                .filter(Appreciation.trx_id.in_(heart_ids))
+                .filter(Appreciation.username == viewer)
+                .all()
+            )
+            you_set = {r[0] for r in yr}
+
+    item["hearts"] = int(counts_map.get(m.trx_id, 0))
+    item["viewer_hearted"] = bool(m.trx_id in you_set)
+    replies = []
+    for r in replies_rows:
+        replies.append(
+            {
+                "trx_id": r.trx_id,
+                "block_num": r.block_num,
+                "timestamp": r.timestamp.isoformat(),
+                "author": r.author,
+                "type": r.type,
+                "content": r.content,
+                "html": markdown_render(r.content),
+                "mentions": json.loads(r.mentions) if r.mentions else [],
+                "tags": json.loads(r.tags) if r.tags else [],
+                "reply_to": r.reply_to,
+                "hearts": int(counts_map.get(r.trx_id, 0)),
+                "viewer_hearted": bool(r.trx_id in you_set),
+            }
+        )
     return jsonify({"item": item, "replies": replies})
+
+
+@api_bp.route("/heart", methods=["POST"])
+def api_heart():
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+    m = Message.query.filter_by(trx_id=trx_id).first()
+    if not m:
+        return jsonify({"success": False, "error": "not found"}), 404
+    viewer = session["username"].lower()
+    # Insert if not exists
+    exists = (
+        db.session.query(Appreciation.id)
+        .filter(Appreciation.trx_id == trx_id, Appreciation.username == viewer)
+        .first()
+    )
+    if not exists:
+        apprec = Appreciation(
+            trx_id=trx_id,
+            username=viewer,
+            created_at=_utcnow_naive(),
+        )
+        db.session.add(apprec)
+        db.session.commit()
+    # Return updated count
+    cnt = (
+        db.session.query(db.func.count(Appreciation.id))
+        .filter(Appreciation.trx_id == trx_id)
+        .scalar()
+    )
+    return jsonify({"success": True, "hearts": int(cnt), "viewer_hearted": True})
+
+
+@api_bp.route("/unheart", methods=["POST"])
+def api_unheart():
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+    viewer = session["username"].lower()
+    db.session.query(Appreciation).filter(
+        Appreciation.trx_id == trx_id, Appreciation.username == viewer
+    ).delete()
+    db.session.commit()
+    cnt = (
+        db.session.query(db.func.count(Appreciation.id))
+        .filter(Appreciation.trx_id == trx_id)
+        .scalar()
+    )
+    return jsonify({"success": True, "hearts": int(cnt), "viewer_hearted": False})
 
 
 @api_bp.route("/mod/log/<trx_id>")
@@ -349,7 +461,31 @@ def api_mentions():
 
     items = []
     max_len = int(current_app.config.get("CONTENT_MAX_LEN", 512))
-    for m in q.all():
+    rows = q.all()
+
+    # Appreciation aggregation for mentions list
+    post_ids = [m.trx_id for m in rows]
+    heart_counts_map = {}
+    viewer_hearts = set()
+    if post_ids:
+        counts_rows = (
+            db.session.query(Appreciation.trx_id, db.func.count(Appreciation.id))
+            .filter(Appreciation.trx_id.in_(post_ids))
+            .group_by(Appreciation.trx_id)
+            .all()
+        )
+        heart_counts_map = {trx: cnt for trx, cnt in counts_rows}
+        if session.get("username"):
+            viewer = session["username"].lower()
+            you_rows = (
+                db.session.query(Appreciation.trx_id)
+                .filter(Appreciation.trx_id.in_(post_ids))
+                .filter(Appreciation.username == viewer)
+                .all()
+            )
+            viewer_hearts = {r[0] for r in you_rows}
+
+    for m in rows:
         text = (m.content or "")[:max_len]
         items.append(
             {
@@ -363,6 +499,8 @@ def api_mentions():
                 "mentions": json.loads(m.mentions) if m.mentions else [],
                 "tags": json.loads(m.tags) if m.tags else [],
                 "reply_to": m.reply_to,
+                "hearts": int(heart_counts_map.get(m.trx_id, 0)),
+                "viewer_hearted": bool(m.trx_id in viewer_hearts),
             }
         )
 

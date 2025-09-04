@@ -60,6 +60,36 @@ document.addEventListener("DOMContentLoaded", () => {
     rightWrap.className = 'd-flex align-items-center gap-2';
     const tagWrap = (window.buildTagChips ? window.buildTagChips(item.tags || [], { basePath: '/feed?tag=', itemClass: 'badge tag-chip text-decoration-none', extraItemClass: 'me-1' }) : (function(){ const d=document.createElement('div'); d.className='d-flex flex-wrap gap-1 mb-2'; return d; })());
 
+    // Heart (appreciation) button
+    const heartBtn = document.createElement('button');
+    heartBtn.type = 'button';
+    heartBtn.className = item.viewer_hearted ? 'btn btn-sm btn-danger' : 'btn btn-sm btn-outline-danger';
+    const updateHeartBtn = (count, on) => {
+      heartBtn.className = on ? 'btn btn-sm btn-danger' : 'btn btn-sm btn-outline-danger';
+      heartBtn.innerHTML = `❤ <span class="ms-1">${typeof count === 'number' ? count : 0}</span>`;
+    };
+    updateHeartBtn(item.hearts, !!item.viewer_hearted);
+    heartBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
+        const url = item.viewer_hearted ? '/api/v1/unheart' : '/api/v1/heart';
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+          body: JSON.stringify({ trx_id: item.trx_id })
+        });
+        const d = await r.json().catch(()=>({ success:false }));
+        if (!r.ok || d.success !== true) throw new Error(d.error || 'Request failed');
+        item.viewer_hearted = !!d.viewer_hearted;
+        item.hearts = typeof d.hearts === 'number' ? d.hearts : item.hearts;
+        updateHeartBtn(item.hearts, item.viewer_hearted);
+      } catch (err) {
+        if (window.showToast) showToast('Failed to update heart: ' + err.message, 'danger');
+      }
+    });
+
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';
     replyBtn.className = 'btn btn-sm btn-outline-primary';
@@ -70,6 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     rightWrap.appendChild(tagWrap);
+    rightWrap.appendChild(heartBtn);
     rightWrap.appendChild(replyBtn);
 
     meta.appendChild(ts);
