@@ -360,6 +360,9 @@ document.addEventListener("DOMContentLoaded", () => {
         navFeedBadge.className = 'badge text-bg-secondary d-none';
       }
     }
+    // Update page title with unread count
+    const baseTitle = 'Hive Micro - Feed';
+    document.title = count > 0 ? `${baseTitle} (${count})` : baseTitle;
   }
 
   async function pollNewCount() {
