@@ -209,6 +209,14 @@ def moderation_page():
     return render_template("pages/mod_dashboard.html")
 
 
+@ui_bp.route("/audit")
+def audit_page():
+    # Audit page is visible to logged-in users only
+    if not session.get("username"):
+        return redirect(url_for("ui.index"))
+    return render_template("pages/audit.html")
+
+
 # --- Error handlers ---
 @ui_bp.errorhandler(401)
 def handle_401(error):

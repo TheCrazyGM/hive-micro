@@ -388,6 +388,126 @@ def mod_log(trx_id: str):
     return jsonify({"items": items})
 
 
+@api_bp.route("/mod/audit")
+def mod_audit_public():
+    """Public moderation audit feed.
+
+    Returns a list of recently moderated posts with minimal details suitable for
+    public transparency. Does not require authentication.
+
+    Query params:
+    - limit: max items to return (default 20, max 100)
+    - cursor: ISO timestamp to paginate before (based on post timestamp)
+    - status: one of 'all' (default), 'hidden', 'pending'
+    """
+    try:
+        limit = int(request.args.get("limit", 20))
+    except Exception:
+        limit = 20
+    limit = max(1, min(limit, 100))
+
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in ("all", "hidden", "pending"):
+        status = "all"
+
+    cursor = request.args.get("cursor")
+    q = Message.query
+    if cursor:
+        try:
+            dt = datetime.fromisoformat(cursor)
+            q = q.filter(Message.timestamp < dt)
+        except Exception:
+            pass
+    q = q.order_by(Message.timestamp.desc()).limit(limit)
+
+    rows = q.all()
+    items = []
+    quorum = int(current_app.config.get("MOD_QUORUM", 1))
+    for m in rows:
+        mod = Moderation.query.filter_by(trx_id=m.trx_id).first()
+        visibility = mod.visibility if mod else "public"
+        hidden = bool(mod and visibility == "hidden")
+
+        # Compute approvals since last unhide (to detect pending state)
+        last_unhide = (
+            db.session.query(ModerationAction.created_at)
+            .filter(
+                ModerationAction.trx_id == m.trx_id,
+                ModerationAction.action == "unhide",
+            )
+            .order_by(ModerationAction.created_at.desc())
+            .first()
+        )
+        cutoff = last_unhide[0] if last_unhide else None
+        approvals_q = db.session.query(ModerationAction.moderator).filter(
+            ModerationAction.trx_id == m.trx_id,
+            ModerationAction.action == "hide",
+        )
+        if cutoff is not None:
+            approvals_q = approvals_q.filter(ModerationAction.created_at > cutoff)
+        approvals = approvals_q.distinct().count()
+        pending = (
+            (not hidden) and (quorum > 1) and (approvals > 0) and (approvals < quorum)
+        )
+
+        # Details for pending: list distinct approvers and latest action timestamp/reason
+        hide_actions_q = ModerationAction.query.filter(
+            ModerationAction.trx_id == m.trx_id,
+            ModerationAction.action == "hide",
+        )
+        if cutoff is not None:
+            hide_actions_q = hide_actions_q.filter(ModerationAction.created_at > cutoff)
+        hide_actions = hide_actions_q.order_by(ModerationAction.created_at.desc()).all()
+        approvers_list = []
+        latest_action_at = None
+        latest_reason = None
+        if hide_actions:
+            # distinct moderators preserving order of latest first
+            seen = set()
+            for a in hide_actions:
+                if a.moderator not in seen:
+                    approvers_list.append(a.moderator)
+                    seen.add(a.moderator)
+            latest_action_at = hide_actions[0].created_at.isoformat()
+            latest_reason = hide_actions[0].reason
+
+        # Apply public status filter
+        if status == "hidden" and not hidden:
+            continue
+        if status == "pending" and not pending:
+            continue
+
+        # Only include records that have some moderation context:
+        # currently hidden, pending moderation, or have a moderation reason recorded.
+        has_reason = bool(mod and mod.mod_reason)
+        if not (hidden or pending or has_reason):
+            continue
+
+        items.append(
+            {
+                "trx_id": m.trx_id,
+                "timestamp": m.timestamp.isoformat(),  # post timestamp for cursor
+                "author": m.author,
+                "content": m.content,
+                "tags": json.loads(m.tags) if m.tags else [],
+                # moderation details for transparency
+                "hidden": hidden,
+                "pending": pending,
+                "quorum": quorum,
+                "mod_reason": (mod.mod_reason if (mod and mod.mod_reason) else None),
+                "mod_by": (mod.mod_by if (mod and mod.mod_by) else None),
+                "mod_at": (mod.mod_at.isoformat() if (mod and mod.mod_at) else None),
+                "approvals": int(approvals),
+                "approvers": approvers_list,
+                "last_action_at": latest_action_at,
+                "last_reason": latest_reason,
+                "visibility": visibility,
+            }
+        )
+
+    return jsonify({"items": items})
+
+
 @api_bp.route("/mentions/count")
 def api_mentions_count():
     if "username" not in session:
