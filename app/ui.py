@@ -12,7 +12,7 @@ from flask import (
 from nectar.account import Account
 
 from .helpers import _get_following_usernames, markdown_render
-from .models import Message, Moderation
+from .models import Message, Moderation, Appreciation, db
 
 ui_bp = Blueprint("ui", __name__)
 
@@ -154,6 +154,37 @@ def post_page(trx_id: str):
             == "hidden"
         )
     ]
+
+    # Heart count aggregation for main post and replies
+    heart_ids = [m.trx_id] + [r["trx_id"] for r in replies]
+    counts_map = {}
+    viewer_hearted_map = {}
+    if heart_ids:
+        rows = (
+            db.session.query(Appreciation.trx_id, db.func.count(Appreciation.id))
+            .filter(Appreciation.trx_id.in_(heart_ids))
+            .group_by(Appreciation.trx_id)
+            .all()
+        )
+        counts_map = {trx: cnt for trx, cnt in rows}
+        if "username" in session:
+            viewer = session["username"].lower()
+            you_rows = (
+                db.session.query(Appreciation.trx_id)
+                .filter(Appreciation.trx_id.in_(heart_ids))
+                .filter(Appreciation.username == viewer)
+                .all()
+            )
+            viewer_hearted_map = {r[0] for r in you_rows}
+
+    # Add heart data to main item
+    item["hearts"] = int(counts_map.get(m.trx_id, 0))
+    item["viewer_hearted"] = bool(m.trx_id in viewer_hearted_map)
+
+    # Add heart data to replies
+    for r in replies:
+        r["hearts"] = int(counts_map.get(r["trx_id"], 0))
+        r["viewer_hearted"] = bool(r["trx_id"] in viewer_hearted_map)
     return render_template(
         "pages/post.html", trx_id=trx_id, item=item, replies=replies, is_hidden=hidden
     )
