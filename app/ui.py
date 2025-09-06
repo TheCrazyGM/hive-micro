@@ -12,7 +12,7 @@ from flask import (
 from nectar.account import Account
 
 from .helpers import _get_following_usernames, markdown_render
-from .models import Message, Moderation, Appreciation, db
+from .models import Category, Message, Moderation, Appreciation, Topic, db
 
 ui_bp = Blueprint("ui", __name__)
 
@@ -215,6 +215,123 @@ def audit_page():
     if not session.get("username"):
         return redirect(url_for("ui.index"))
     return render_template("pages/audit.html")
+
+
+# ==================== FORUM UI ROUTES ====================
+
+
+@ui_bp.route("/forum")
+def forum_home():
+    """Main forum homepage showing all categories."""
+    if "username" not in session:
+        return redirect(url_for("ui.index"))
+
+    # Get categories with topic counts
+    categories = (
+        Category.query.filter_by(is_active=True)
+        .order_by(Category.sort_order, Category.name)
+        .all()
+    )
+    cat_data = []
+    for cat in categories:
+        topic_count = Topic.query.filter_by(category_id=cat.id, is_hidden=False).count()
+        recent_topic = (
+            Topic.query.filter_by(category_id=cat.id, is_hidden=False)
+            .order_by(Topic.last_activity.desc())
+            .first()
+        )
+
+        cat_data.append(
+            {
+                "id": cat.id,
+                "slug": cat.slug,
+                "name": cat.name,
+                "description": cat.description,
+                "topic_count": topic_count,
+                "recent_topic": {
+                    "title": recent_topic.title,
+                    "trx_id": recent_topic.trx_id,
+                    "last_author": recent_topic.last_author,
+                    "last_activity": recent_topic.last_activity,
+                }
+                if recent_topic
+                else None,
+            }
+        )
+
+    return render_template("pages/forum_home.html", categories=cat_data)
+
+
+@ui_bp.route("/forum/<category_slug>")
+def forum_category(category_slug: str):
+    """Category view showing topics."""
+    if "username" not in session:
+        return redirect(url_for("ui.index"))
+
+    category = Category.query.filter_by(slug=category_slug, is_active=True).first()
+    if not category:
+        return render_template("errors/404.html"), 404
+
+    return render_template("pages/forum_category.html", category=category)
+
+
+@ui_bp.route("/forum/topics/<trx_id>")
+def forum_topic(trx_id: str):
+    """Individual topic view with posts."""
+    if not trx_id:
+        return redirect(url_for("ui.forum_home"))
+
+    topic = Topic.query.filter_by(trx_id=trx_id).first()
+    if not topic:
+        return render_template("errors/404.html"), 404
+
+    # Check if hidden and user is not moderator
+    is_mod = session.get("username", "").lower() in (
+        os.environ.get("HIVE_MICRO_MODERATORS", "").lower().split(",")
+        if os.environ.get("HIVE_MICRO_MODERATORS")
+        else []
+    )
+    if topic.is_hidden and not is_mod:
+        return render_template("errors/404.html"), 404
+
+    return render_template("pages/forum_topic.html", topic=topic)
+
+
+@ui_bp.route("/forum/new_topic")
+def new_topic():
+    """New topic creation form."""
+    if "username" not in session:
+        return redirect(url_for("ui.index"))
+
+    # Get active categories for dropdown
+    categories = (
+        Category.query.filter_by(is_active=True)
+        .order_by(Category.sort_order, Category.name)
+        .all()
+    )
+
+    return render_template("pages/new_topic.html", categories=categories)
+
+
+@ui_bp.route("/forum/categories/<category_slug>/new_topic")
+def new_topic_in_category(category_slug: str):
+    """New topic creation form pre-filled with category."""
+    if "username" not in session:
+        return redirect(url_for("ui.index"))
+
+    category = Category.query.filter_by(slug=category_slug, is_active=True).first()
+    if not category:
+        return redirect(url_for("ui.new_topic"))
+
+    categories = (
+        Category.query.filter_by(is_active=True)
+        .order_by(Category.sort_order, Category.name)
+        .all()
+    )
+
+    return render_template(
+        "pages/new_topic.html", categories=categories, selected_category=category
+    )
 
 
 # --- Error handlers ---

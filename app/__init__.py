@@ -68,6 +68,7 @@ def create_app():
     db.init_app(app)
     cache.init_app(app)
     app.config["APP_ID"] = os.environ.get("HIVE_MICRO_APP_ID", "hive.micro")
+    app.config["FORUM_APP_ID"] = os.environ.get("HIVE_FORUM_APP_ID", "hive.forum")
 
     # Initialize Hive instance with optional custom nodes
     app.config["HIVE_NODES"] = os.environ.get("HIVE_NODES", "").strip()

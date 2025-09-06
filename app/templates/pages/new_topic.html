@@ -1,0 +1,353 @@
+{% extends "layout/base.html" %}
+{% block title %}New Topic - Forum{% endblock %}
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10 col-12">
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('ui.forum_home') }}">Forum</a>
+          </li>
+          <li class="breadcrumb-item active" aria-current="page">New Topic</li>
+        </ol>
+      </nav>
+
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Create New Topic</h4>
+        </div>
+        <div class="card-body">
+          <form id="newTopicForm">
+            <div class="mb-3">
+              <label for="topicCategory" class="form-label">Category</label>
+              <div class="input-group">
+                <select class="form-select" id="topicCategory">
+                  <option value="">Select existing category...</option>
+                  {% for category in categories %}
+                    <option value="{{ category.slug }}"
+                            {% if selected_category and selected_category.slug == category.slug %}selected{% endif %}>
+                      {{ category.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-outline-secondary" type="button" id="newCategoryBtn">
+                  <i class="bi bi-plus"></i> New
+                </button>
+              </div>
+
+              <!-- New Category Input (initially hidden) -->
+              <div id="newCategoryInput" class="mt-2" style="display: none;">
+                <label for="newCategorySlug" class="form-label small">New Category</label>
+                <div class="row">
+                  <div class="col-md-6">
+                    <input type="text" class="form-control form-control-sm" id="newCategorySlug"
+                           placeholder="category-slug" maxlength="50">
+                    <div class="form-text">URL-friendly name (lowercase, hyphens only)</div>
+                  </div>
+                  <div class="col-md-6">
+                    <input type="text" class="form-control form-control-sm" id="newCategoryName"
+                           placeholder="Category Display Name" maxlength="100">
+                    <div class="form-text">Display name for the category</div>
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <input type="text" class="form-control form-control-sm" id="newCategoryDesc"
+                         placeholder="Category description (optional)" maxlength="200">
+                </div>
+                <div class="mt-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="cancelNewCategory">
+                    Cancel
+                  </button>
+                  <small class="text-muted ms-3">
+                    <i class="bi bi-info-circle"></i> New categories will be created when you post the topic
+                  </small>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="topicTitle" class="form-label">Title</label>
+              <input type="text" class="form-control" id="topicTitle"
+                     placeholder="Enter topic title..." maxlength="200" required>
+              <div class="form-text">
+                <span id="titleCharCount">0</span> / 200 characters
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="topicContent" class="form-label">Content</label>
+              <textarea class="form-control" id="topicContent" rows="8"
+                        placeholder="Write your topic content..." required></textarea>
+              <div class="form-text">
+                <span id="contentCharCount">0</span> / <span id="maxContentChars">2048</span> characters
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="topicTags" class="form-label">Tags <span class="text-muted">(optional)</span></label>
+              <input type="text" class="form-control" id="topicTags"
+                     placeholder="tag1, tag2, tag3...">
+              <div class="form-text">
+                Separate tags with commas. Maximum 5 tags.
+              </div>
+            </div>
+
+            <div class="alert alert-info">
+              <h6 class="alert-heading">
+                <i class="bi bi-info-circle"></i> Formatting Help
+              </h6>
+              <p class="mb-2">You can use Markdown formatting:</p>
+              <ul class="mb-0 small">
+                <li><strong>**bold text**</strong> or <em>*italic text*</em></li>
+                <li><code>`inline code`</code> or <code>```code blocks```</code></li>
+                <li>Links: <code>[text](url)</code></li>
+                <li>Mentions: <code>@username</code></li>
+                <li>Hash tags: <code>#hashtag</code></li>
+              </ul>
+            </div>
+
+            <div class="d-flex justify-content-between">
+              <a href="{{ url_for('ui.forum_home') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Forum
+              </a>
+              <div>
+                <button type="button" class="btn btn-outline-primary me-2" id="previewBtn">
+                  <i class="bi bi-eye"></i> Preview
+                </button>
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-send"></i> Create Topic
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Preview Modal -->
+      <div class="modal fade" id="previewModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Topic Preview</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <h4 id="previewTitle">Title will appear here</h4>
+              <div class="text-muted mb-3">
+                <small>by {{ session.get('username') }} • in <span id="previewCategory">Category</span></small>
+              </div>
+              <div id="previewContent">Content will appear here...</div>
+              <div id="previewTags" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('newTopicForm');
+    const titleInput = document.getElementById('topicTitle');
+    const contentInput = document.getElementById('topicContent');
+    const categorySelect = document.getElementById('topicCategory');
+    const tagsInput = document.getElementById('topicTags');
+    const previewBtn = document.getElementById('previewBtn');
+    const newCategoryBtn = document.getElementById('newCategoryBtn');
+    const newCategoryInput = document.getElementById('newCategoryInput');
+    const cancelNewCategory = document.getElementById('cancelNewCategory');
+    const newCategorySlug = document.getElementById('newCategorySlug');
+    const newCategoryName = document.getElementById('newCategoryName');
+    const newCategoryDesc = document.getElementById('newCategoryDesc');
+
+    // New category functionality
+    newCategoryBtn.onclick = () => {
+      newCategoryInput.style.display = 'block';
+      categorySelect.value = '';
+      newCategorySlug.focus();
+    };
+
+    cancelNewCategory.onclick = () => {
+      newCategoryInput.style.display = 'none';
+      newCategorySlug.value = '';
+      newCategoryName.value = '';
+      newCategoryDesc.value = '';
+    };
+
+    // Auto-generate slug from name
+    newCategoryName.oninput = () => {
+      if (!newCategorySlug.value) {
+        const slug = newCategoryName.value
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        newCategorySlug.value = slug;
+      }
+    };
+
+    // Validate slug format
+    newCategorySlug.oninput = () => {
+      const slug = newCategorySlug.value;
+      const valid = /^[a-z0-9-]*$/.test(slug);
+      newCategorySlug.classList.toggle('is-invalid', !valid && slug.length > 0);
+    };
+
+    // Character counters
+    titleInput.oninput = () => {
+      document.getElementById('titleCharCount').textContent = titleInput.value.length;
+    };
+
+    contentInput.oninput = () => {
+      document.getElementById('contentCharCount').textContent = contentInput.value.length;
+    };
+
+    // Preview functionality
+    previewBtn.onclick = async () => {
+      const title = titleInput.value.trim();
+      const content = contentInput.value.trim();
+
+      let category = 'No category';
+      const isNewCategory = newCategoryInput.style.display !== 'none';
+      if (isNewCategory) {
+        const newName = newCategoryName.value.trim();
+        category = newName || newCategorySlug.value.trim() || 'New Category';
+      } else if (categorySelect.value) {
+        category = categorySelect.selectedOptions[0]?.text || categorySelect.value;
+      }
+
+      const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t);
+
+      if (!title || !content) {
+        alert('Please fill in title and content before previewing.');
+        return;
+      }
+
+      // Update preview content
+      document.getElementById('previewTitle').textContent = title;
+      document.getElementById('previewCategory').textContent = category;
+
+      // Render content as HTML (simplified Markdown)
+      let htmlContent = content
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+
+      document.getElementById('previewContent').innerHTML = htmlContent;
+
+      // Show tags
+      const tagsHtml = tags.map(tag => `<span class="badge bg-secondary me-1">#${tag}</span>`).join('');
+      document.getElementById('previewTags').innerHTML = tagsHtml;
+
+      // Show modal
+      new bootstrap.Modal(document.getElementById('previewModal')).show();
+    };
+
+    // Form submission
+    form.onsubmit = (e) => {
+      e.preventDefault();
+
+      const title = titleInput.value.trim();
+      const content = contentInput.value.trim();
+      let category = categorySelect.value;
+      const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t).slice(0, 5);
+
+      // Check if creating a new category
+      const isNewCategory = newCategoryInput.style.display !== 'none';
+      if (isNewCategory) {
+        const newSlug = newCategorySlug.value.trim();
+        const newName = newCategoryName.value.trim();
+
+        if (!newSlug || !newName) {
+          alert('Please fill in the new category slug and name.');
+          return;
+        }
+
+        if (!/^[a-z0-9-]+$/.test(newSlug)) {
+          alert('Category slug can only contain lowercase letters, numbers, and hyphens.');
+          return;
+        }
+
+        category = newSlug;
+      }
+
+      if (!title || !content || !category) {
+        alert('Please fill in all required fields.');
+        return;
+      }
+
+      if (title.length > 200) {
+        alert('Title is too long. Maximum 200 characters.');
+        return;
+      }
+
+      if (content.length > 2048) {
+        alert('Content is too long. Maximum 2048 characters.');
+        return;
+      }
+
+      // Prepare the topic data for blockchain
+      const topicData = {
+        app: window.HIVE_FORUM_APP_ID, // Use configurable forum app ID
+        v: 1,
+        type: 'topic',
+        title: title,
+        content: content,
+        category: category,
+        tags: tags,
+        mentions: extractMentions(content)
+      };
+
+      // Check if Hive Keychain is available
+      if (!window.hive_keychain) {
+        alert('Hive Keychain is required to create topics. Please install the extension.');
+        return;
+      }
+
+      // Disable the form while posting
+      const submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Creating Topic...';
+
+      // Broadcast via Hive Keychain
+      window.hive_keychain.requestCustomJson(
+        '{{ session.get("username") }}',
+        window.HIVE_FORUM_APP_ID,
+        'Posting',
+        JSON.stringify(topicData),
+        'Create Forum Topic',
+        (response) => {
+          if (response.success) {
+            alert('Topic created successfully! It may take a few moments to appear.');
+            // Redirect to forum home
+            window.location.href = '{{ url_for("ui.forum_home") }}';
+          } else {
+            alert('Error creating topic: ' + response.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-send"></i> Create Topic';
+          }
+        }
+      );
+    };
+
+    function extractMentions(text) {
+      const mentionRegex = /@([a-z0-9][a-z0-9\-\.]{1,31})/gi;
+      const mentions = [];
+      let match;
+
+      while ((match = mentionRegex.exec(text)) !== null) {
+        mentions.push(match[1].toLowerCase());
+      }
+
+      return [...new Set(mentions)]; // Remove duplicates
+    }
+
+    // Set max content length from server config
+    document.getElementById('maxContentChars').textContent = window.HIVE_MAX_CONTENT_LEN || 2048;
+    contentInput.setAttribute('maxlength', window.HIVE_MAX_CONTENT_LEN || 2048);
+  </script>
+{% endblock %}

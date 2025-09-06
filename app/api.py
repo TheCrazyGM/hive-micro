@@ -11,11 +11,15 @@ from .helpers import (
     markdown_render,
 )
 from .models import (
+    Category,
     Checkpoint,
     MentionState,
     Message,
     Moderation,
     ModerationAction,
+    Post,
+    Topic,
+    TopicAction,
     Appreciation,
     db,
 )
@@ -938,3 +942,352 @@ def mod_unhide():
         mod.mod_at = _utcnow_naive()
     db.session.commit()
     return jsonify({"success": True})
+
+
+# ==================== FORUM API ENDPOINTS ====================
+
+
+@api_bp.route("/forum/categories")
+def forum_categories():
+    """List all active forum categories."""
+    categories = (
+        Category.query.filter_by(is_active=True)
+        .order_by(Category.sort_order, Category.name)
+        .all()
+    )
+    items = []
+    for cat in categories:
+        # Get topic count for each category
+        topic_count = Topic.query.filter_by(category_id=cat.id, is_hidden=False).count()
+        items.append(
+            {
+                "id": cat.id,
+                "slug": cat.slug,
+                "name": cat.name,
+                "description": cat.description,
+                "topic_count": topic_count,
+                "created_at": cat.created_at.isoformat(),
+                "created_by": cat.created_by,
+            }
+        )
+    return jsonify({"items": items, "count": len(items)})
+
+
+@api_bp.route("/forum/categories/<category_slug>/topics")
+def forum_category_topics(category_slug: str):
+    """List topics in a specific category."""
+    category = Category.query.filter_by(slug=category_slug, is_active=True).first()
+    if not category:
+        return jsonify({"error": "category not found"}), 404
+
+    try:
+        limit = int(request.args.get("limit", 20))
+    except Exception:
+        limit = 20
+    limit = max(1, min(limit, 100))
+
+    cursor = request.args.get("cursor")
+
+    # Query topics in category, excluding hidden ones for non-moderators
+    q = Topic.query.filter_by(category_id=category.id)
+
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if not is_mod:
+        q = q.filter_by(is_hidden=False)
+
+    if cursor:
+        try:
+            dt = datetime.fromisoformat(cursor)
+            q = q.filter(Topic.last_activity < dt)
+        except Exception:
+            pass
+
+    # Order by pinned first, then by last activity
+    q = q.order_by(Topic.is_pinned.desc(), Topic.last_activity.desc()).limit(limit)
+
+    topics = q.all()
+    items = []
+
+    for topic in topics:
+        items.append(
+            {
+                "id": topic.id,
+                "trx_id": topic.trx_id,
+                "title": topic.title,
+                "author": topic.author,
+                "timestamp": topic.timestamp.isoformat(),
+                "last_activity": topic.last_activity.isoformat()
+                if topic.last_activity
+                else None,
+                "last_author": topic.last_author,
+                "reply_count": topic.reply_count,
+                "is_pinned": topic.is_pinned,
+                "is_locked": topic.is_locked,
+                "tags": json.loads(topic.tags) if topic.tags else [],
+            }
+        )
+
+    return jsonify(
+        {
+            "category": {
+                "slug": category.slug,
+                "name": category.name,
+                "description": category.description,
+            },
+            "items": items,
+            "count": len(items),
+        }
+    )
+
+
+@api_bp.route("/forum/topics/<trx_id>")
+def forum_topic(trx_id: str):
+    """Get a specific topic with its posts."""
+    topic = Topic.query.filter_by(trx_id=trx_id).first()
+    if not topic:
+        return jsonify({"error": "topic not found"}), 404
+
+    # Check if hidden and user is not moderator
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if topic.is_hidden and not is_mod:
+        return jsonify({"error": "topic not found"}), 404
+
+    try:
+        limit = int(request.args.get("limit", 50))
+    except Exception:
+        limit = 50
+    limit = max(1, min(limit, 200))
+
+    cursor = request.args.get("cursor")
+
+    # Get posts in topic
+    q = Post.query.filter_by(topic_id=topic.id)
+    if not is_mod:
+        q = q.filter_by(is_hidden=False)
+
+    if cursor:
+        try:
+            dt = datetime.fromisoformat(cursor)
+            q = q.filter(Post.timestamp < dt)
+        except Exception:
+            pass
+
+    q = q.order_by(Post.timestamp.asc()).limit(limit)
+    posts = q.all()
+
+    # Get hearts for topic and all posts
+    all_trx_ids = [topic.trx_id] + [p.trx_id for p in posts]
+    heart_counts_map = {}
+    viewer_hearts = set()
+
+    if all_trx_ids:
+        # Count hearts by trx_id
+        rows = (
+            db.session.query(Appreciation.trx_id, db.func.count(Appreciation.id))
+            .filter(Appreciation.trx_id.in_(all_trx_ids))
+            .group_by(Appreciation.trx_id)
+            .all()
+        )
+        heart_counts_map = {trx: cnt for trx, cnt in rows}
+
+        # Check viewer's hearts
+        if session.get("username"):
+            viewer = session["username"].lower()
+            you_rows = (
+                db.session.query(Appreciation.trx_id)
+                .filter(Appreciation.trx_id.in_(all_trx_ids))
+                .filter(Appreciation.username == viewer)
+                .all()
+            )
+            viewer_hearts = {r[0] for r in you_rows}
+
+    # Build topic data
+    topic_data = {
+        "id": topic.id,
+        "trx_id": topic.trx_id,
+        "title": topic.title,
+        "content": topic.content,
+        "html": markdown_render(topic.content),
+        "author": topic.author,
+        "timestamp": topic.timestamp.isoformat(),
+        "category": {"slug": topic.category.slug, "name": topic.category.name},
+        "tags": json.loads(topic.tags) if topic.tags else [],
+        "mentions": json.loads(topic.mentions) if topic.mentions else [],
+        "is_pinned": topic.is_pinned,
+        "is_locked": topic.is_locked,
+        "reply_count": topic.reply_count,
+        "last_activity": topic.last_activity.isoformat()
+        if topic.last_activity
+        else None,
+        "hearts": int(heart_counts_map.get(topic.trx_id, 0)),
+        "viewer_hearted": bool(topic.trx_id in viewer_hearts),
+    }
+
+    # Build posts data
+    posts_data = []
+    for post in posts:
+        posts_data.append(
+            {
+                "id": post.id,
+                "trx_id": post.trx_id,
+                "content": post.content,
+                "html": markdown_render(post.content),
+                "author": post.author,
+                "timestamp": post.timestamp.isoformat(),
+                "mentions": json.loads(post.mentions) if post.mentions else [],
+                "reply_to_id": post.reply_to_id,
+                "hearts": int(heart_counts_map.get(post.trx_id, 0)),
+                "viewer_hearted": bool(post.trx_id in viewer_hearts),
+            }
+        )
+
+    return jsonify({"topic": topic_data, "posts": posts_data, "count": len(posts_data)})
+
+
+@api_bp.route("/forum/topics/<topic_trx_id>/actions")
+def forum_topic_actions(topic_trx_id: str):
+    """Get moderation actions for a topic (moderators only)."""
+    if "username" not in session:
+        return jsonify({"items": []}), 401
+
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
+    if not is_mod:
+        return jsonify({"items": []}), 403
+
+    topic = Topic.query.filter_by(trx_id=topic_trx_id).first()
+    if not topic:
+        return jsonify({"error": "topic not found"}), 404
+
+    actions = (
+        TopicAction.query.filter_by(topic_id=topic.id)
+        .order_by(TopicAction.timestamp.desc())
+        .all()
+    )
+
+    items = []
+    for action in actions:
+        items.append(
+            {
+                "id": action.id,
+                "moderator": action.moderator,
+                "action": action.action,
+                "reason": action.reason,
+                "timestamp": action.timestamp.isoformat(),
+                "action_data": json.loads(action.action_data)
+                if action.action_data
+                else {},
+            }
+        )
+
+    return jsonify({"items": items, "count": len(items)})
+
+
+@api_bp.route("/forum/heart", methods=["POST"])
+def forum_heart():
+    """Heart a topic or post."""
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+
+    # Check if it's a topic or post
+    topic = Topic.query.filter_by(trx_id=trx_id).first()
+    post = Post.query.filter_by(trx_id=trx_id).first()
+
+    if not topic and not post:
+        return jsonify({"success": False, "error": "not found"}), 404
+
+    viewer = session["username"].lower()
+
+    # Check if already hearted
+    exists = (
+        db.session.query(Appreciation.id)
+        .filter(Appreciation.trx_id == trx_id, Appreciation.username == viewer)
+        .first()
+    )
+
+    if not exists:
+        apprec = Appreciation(
+            trx_id=trx_id,
+            username=viewer,
+            created_at=_utcnow_naive(),
+            topic_id=topic.id if topic else None,
+            post_id=post.id if post else None,
+        )
+        db.session.add(apprec)
+        db.session.commit()
+
+    # Return updated count
+    cnt = (
+        db.session.query(db.func.count(Appreciation.id))
+        .filter(Appreciation.trx_id == trx_id)
+        .scalar()
+    )
+
+    return jsonify({"success": True, "hearts": int(cnt), "viewer_hearted": True})
+
+
+@api_bp.route("/forum/unheart", methods=["POST"])
+def forum_unheart():
+    """Remove heart from a topic or post."""
+    if "username" not in session:
+        return jsonify({"success": False, "error": "unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    trx_id = (data.get("trx_id") or "").strip()
+    if not trx_id:
+        return jsonify({"success": False, "error": "missing trx_id"}), 400
+
+    viewer = session["username"].lower()
+
+    db.session.query(Appreciation).filter(
+        Appreciation.trx_id == trx_id, Appreciation.username == viewer
+    ).delete()
+    db.session.commit()
+
+    cnt = (
+        db.session.query(db.func.count(Appreciation.id))
+        .filter(Appreciation.trx_id == trx_id)
+        .scalar()
+    )
+
+    return jsonify({"success": True, "hearts": int(cnt), "viewer_hearted": False})
+
+
+@api_bp.route("/forum/status")
+def forum_status():
+    """Forum statistics and status."""
+    total_topics = Topic.query.filter_by(is_hidden=False).count()
+    total_posts = Post.query.filter_by(is_hidden=False).count()
+    total_categories = Category.query.filter_by(is_active=True).count()
+
+    # Recent activity
+    recent_topic = (
+        Topic.query.filter_by(is_hidden=False)
+        .order_by(Topic.last_activity.desc())
+        .first()
+    )
+
+    ck = Checkpoint.query.get(1)
+
+    return jsonify(
+        {
+            "topics": total_topics,
+            "posts": total_posts,
+            "categories": total_categories,
+            "last_activity": recent_topic.last_activity.isoformat()
+            if recent_topic and recent_topic.last_activity
+            else None,
+            "last_block": ck.last_block if ck else 0,
+            "app_id": current_app.config.get("FORUM_APP_ID", "hive.forum"),
+        }
+    )

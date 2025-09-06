@@ -13,7 +13,7 @@ from nectargraphenebase.account import PublicKey
 from nectargraphenebase.ecdsasig import verify_message
 
 from .extensions import cache
-from .models import Checkpoint, Message, db
+from .models import Category, Checkpoint, Message, Post, Topic, TopicAction, db
 
 
 def _utcnow_naive() -> datetime:
@@ -280,7 +280,12 @@ def _ingest_block(hv: Hive, block_num: int):
                 op_type, payload = op
                 if op_type != "custom_json":
                     continue
-                if payload.get("id") != current_app.config["APP_ID"]:
+                # Check for both microblog and forum APP_IDs
+                payload_id = payload.get("id")
+                micro_app_id = current_app.config["APP_ID"]
+                forum_app_id = current_app.config.get("FORUM_APP_ID", "hive.forum")
+
+                if payload_id not in [micro_app_id, forum_app_id]:
                     continue
                 # Determine author from required posting auths
                 rpa = payload.get("required_posting_auths", []) or []
@@ -297,41 +302,217 @@ def _ingest_block(hv: Hive, block_num: int):
                         continue
                 if not isinstance(body, dict):
                     continue
-                if body.get("type") != "post":
-                    # v1 implements only posts; ignore others
-                    continue
-                content = body.get("content", "").strip()
-                if not content:
-                    continue
-                # Mentions/tags: derive from content when not provided
-                mentions = body.get("mentions") or []
-                tags = body.get("tags") or []
-                if not mentions or not tags:
-                    em, et = _extract_mentions_tags(content)
-                    if not mentions:
-                        mentions = em
-                    if not tags:
-                        tags = et
-                reply_to = body.get("reply_to")
-                # trx_id may not be present on tx; generate stable fallback
+                # Handle different operation types
+                op_type = body.get("type")
                 trx_id = tx.get("transaction_id") or f"{block_num}-{tx_idx}-{op_idx}"
 
-                # Upsert by trx_id
-                if not Message.query.filter_by(trx_id=trx_id).first():
-                    m = Message(
-                        trx_id=trx_id,
-                        block_num=block_num,
+                # Route to appropriate processor based on APP_ID
+                if payload_id == forum_app_id and op_type == "topic":
+                    # Forum topic creation
+                    title = body.get("title", "").strip()
+                    content = body.get("content", "").strip()
+                    if not title or not content:
+                        continue
+
+                    # Get or create category
+                    category_slug = body.get("category", "general")
+                    category = Category.query.filter_by(
+                        slug=category_slug, is_active=True
+                    ).first()
+                    if not category:
+                        # Auto-create category with reasonable defaults
+                        if category_slug == "general":
+                            category = Category(
+                                slug="general",
+                                name="General Discussion",
+                                description="General topics and discussions",
+                                created_by=author,
+                                sort_order=0,
+                            )
+                        else:
+                            # Auto-create other categories with generated names
+                            category_name = category_slug.replace("-", " ").title()
+                            category = Category(
+                                slug=category_slug,
+                                name=category_name,
+                                description=f"Discussions about {category_name.lower()}",
+                                created_by=author,
+                                sort_order=99,  # New categories go to the end
+                            )
+                        db.session.add(category)
+                        db.session.flush()  # Get the ID
+
+                    # Extract mentions/tags
+                    mentions = body.get("mentions") or []
+                    tags = body.get("tags") or []
+                    if not mentions or not tags:
+                        em, et = _extract_mentions_tags(f"{title} {content}")
+                        if not mentions:
+                            mentions = em
+                        if not tags:
+                            tags = et
+
+                    # Upsert topic
+                    if not Topic.query.filter_by(trx_id=trx_id).first():
+                        topic = Topic(
+                            trx_id=trx_id,
+                            block_num=block_num,
+                            timestamp=dt,
+                            title=title[:200],  # Enforce length limit
+                            content=content,
+                            author=author,
+                            category_id=category.id,
+                            tags=json.dumps(tags) if tags else None,
+                            mentions=json.dumps(mentions) if mentions else None,
+                            last_activity=dt,
+                            last_author=author,
+                            raw_json=json.dumps(body),
+                        )
+                        db.session.add(topic)
+                        inserted += 1
+
+                elif payload_id == forum_app_id and op_type == "post":
+                    # Forum post/reply
+                    content = body.get("content", "").strip()
+                    topic_id_trx = body.get("topic_id")
+                    if not content or not topic_id_trx:
+                        continue
+
+                    # Find the topic being replied to
+                    topic = Topic.query.filter_by(trx_id=topic_id_trx).first()
+                    if not topic or topic.is_locked:
+                        continue
+
+                    # Extract mentions
+                    mentions = body.get("mentions") or []
+                    if not mentions:
+                        mentions = _extract_mentions_tags(content)[0]
+
+                    # Find reply-to post if specified
+                    reply_to_trx = body.get("reply_to")
+                    reply_to_post = None
+                    if reply_to_trx:
+                        reply_to_post = Post.query.filter_by(
+                            trx_id=reply_to_trx, topic_id=topic.id
+                        ).first()
+
+                    # Upsert post
+                    if not Post.query.filter_by(trx_id=trx_id).first():
+                        post = Post(
+                            trx_id=trx_id,
+                            block_num=block_num,
+                            timestamp=dt,
+                            content=content,
+                            author=author,
+                            topic_id=topic.id,
+                            reply_to_id=reply_to_post.id if reply_to_post else None,
+                            mentions=json.dumps(mentions) if mentions else None,
+                            raw_json=json.dumps(body),
+                        )
+                        db.session.add(post)
+
+                        # Update topic stats
+                        topic.reply_count = (
+                            Post.query.filter_by(topic_id=topic.id).count() + 1
+                        )
+                        topic.last_activity = dt
+                        topic.last_author = author
+
+                        inserted += 1
+
+                elif payload_id == forum_app_id and op_type == "topic_action":
+                    # Topic administrative actions (moderator only)
+                    topic_id_trx = body.get("topic_id")
+                    action = body.get("action")
+                    if not topic_id_trx or not action:
+                        continue
+
+                    # Check if user is moderator
+                    if author.lower() not in current_app.config.get("MODERATORS", []):
+                        continue
+
+                    topic = Topic.query.filter_by(trx_id=topic_id_trx).first()
+                    if not topic:
+                        continue
+
+                    # Apply the action
+                    if action == "lock":
+                        topic.is_locked = True
+                    elif action == "unlock":
+                        topic.is_locked = False
+                    elif action == "pin":
+                        topic.is_pinned = True
+                    elif action == "unpin":
+                        topic.is_pinned = False
+                    elif action == "hide":
+                        topic.is_hidden = True
+                    elif action == "unhide":
+                        topic.is_hidden = False
+                    elif action == "move":
+                        new_category_slug = body.get("category")
+                        if new_category_slug:
+                            new_category = Category.query.filter_by(
+                                slug=new_category_slug, is_active=True
+                            ).first()
+                            if new_category:
+                                topic.category_id = new_category.id
+
+                    # Log the action
+                    action_log = TopicAction(
+                        topic_id=topic.id,
+                        moderator=author,
+                        action=action,
+                        reason=body.get("reason"),
                         timestamp=dt,
-                        author=author,
-                        type="post",
-                        content=content,
-                        mentions=json.dumps(mentions) if mentions else None,
-                        tags=json.dumps(tags) if tags else None,
-                        reply_to=reply_to,
-                        raw_json=json.dumps(body),
+                        action_data=json.dumps(
+                            {
+                                k: v
+                                for k, v in body.items()
+                                if k not in ["app", "v", "type"]
+                            }
+                        ),
                     )
-                    db.session.add(m)
+                    db.session.add(action_log)
                     inserted += 1
+
+                elif payload_id == forum_app_id and op_type == "category_action":
+                    # Category management (admin only)
+                    # For now, skip - can be implemented later for full admin functionality
+                    continue
+
+                else:
+                    # Handle legacy microblog posts for backward compatibility
+                    if op_type == "post" or op_type is None:  # Legacy format
+                        content = body.get("content", "").strip()
+                        if not content:
+                            continue
+
+                        mentions = body.get("mentions") or []
+                        tags = body.get("tags") or []
+                        if not mentions or not tags:
+                            em, et = _extract_mentions_tags(content)
+                            if not mentions:
+                                mentions = em
+                            if not tags:
+                                tags = et
+                        reply_to = body.get("reply_to")
+
+                        # Only create legacy Message if not already exists
+                        if not Message.query.filter_by(trx_id=trx_id).first():
+                            m = Message(
+                                trx_id=trx_id,
+                                block_num=block_num,
+                                timestamp=dt,
+                                author=author,
+                                type="post",
+                                content=content,
+                                mentions=json.dumps(mentions) if mentions else None,
+                                tags=json.dumps(tags) if tags else None,
+                                reply_to=reply_to,
+                                raw_json=json.dumps(body),
+                            )
+                            db.session.add(m)
+                            inserted += 1
             except Exception:
                 # Skip malformed ops but continue
                 continue

@@ -1,0 +1,184 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ category.name }} - Forum{% endblock %}
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10 col-12">
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('ui.forum_home') }}">Forum</a>
+          </li>
+          <li class="breadcrumb-item active" aria-current="page">{{ category.name }}</li>
+        </ol>
+      </nav>
+
+      <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+          <h1 class="mb-1">{{ category.name }}</h1>
+          {% if category.description %}
+            <p class="text-muted mb-0">{{ category.description }}</p>
+          {% endif %}
+        </div>
+        <a href="{{ url_for('ui.new_topic_in_category', category_slug=category.slug) }}"
+           class="btn btn-primary">
+          <i class="bi bi-plus-lg"></i> New Topic
+        </a>
+      </div>
+
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Topics</h6>
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="sort" id="sort-activity" value="activity" checked>
+            <label class="btn btn-outline-secondary" for="sort-activity">Latest Activity</label>
+
+            <input type="radio" class="btn-check" name="sort" id="sort-created" value="created">
+            <label class="btn btn-outline-secondary" for="sort-created">Newest</label>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div id="topics-container">
+            <div class="d-flex justify-content-center p-4">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          </div>
+          <div class="text-center p-3 border-top">
+            <button id="loadMoreBtn" class="btn btn-outline-secondary" style="display: none;">
+              Load more topics
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentCursor = null;
+    let isLoading = false;
+
+    function formatTimeAgo(dateString) {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+
+      if (diffInSeconds < 60) return 'just now';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+      if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    function renderTopics(topics, append = false) {
+      const container = document.getElementById('topics-container');
+
+      if (topics.length === 0 && !append) {
+        container.innerHTML = `
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-inbox display-4 d-block mb-3"></i>
+            <p class="mb-0">No topics in this category yet.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      topics.forEach(topic => {
+        const pinnedBadge = topic.is_pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : '';
+        const lockedIcon = topic.is_locked ? '<i class="bi bi-lock-fill text-muted ms-1"></i>' : '';
+
+        html += `
+          <a href="{{ url_for('ui.forum_topic', trx_id='TOPIC_ID') }}".replace('TOPIC_ID', topic.trx_id)
+             class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center mb-1">
+                  ${pinnedBadge}
+                  <h6 class="mb-0">${topic.title}</h6>
+                  ${lockedIcon}
+                </div>
+                <small class="text-muted">
+                  by ${topic.author} • ${formatTimeAgo(topic.timestamp)}
+                  ${topic.last_activity ? ` • Last activity by ${topic.last_author} ${formatTimeAgo(topic.last_activity)}` : ''}
+                </small>
+                ${topic.tags && topic.tags.length > 0 ? `
+        <div class="mt-2">
+        ${topic.tags.map(tag => `<span class="badge bg-secondary me-1">#${tag}</span>`).join('')}
+        </div>
+        ` : ''}
+              </div>
+              <div class="text-center ms-3">
+                <div class="text-muted small">${topic.reply_count}</div>
+                <div class="text-muted small">replies</div>
+              </div>
+            </div>
+          </a>
+        `;
+      });
+
+      if (append) {
+        container.innerHTML += html;
+      } else {
+        container.innerHTML = '<div class="list-group list-group-flush">' + html + '</div>';
+      }
+    }
+
+    function loadTopics(append = false) {
+      if (isLoading) return;
+      isLoading = true;
+
+      const url = new URL(`/api/v1/forum/categories/{{ category.slug }}/topics`, window.location.origin);
+      if (currentCursor) {
+        url.searchParams.set('cursor', currentCursor);
+      }
+
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          renderTopics(data.items, append);
+
+          // Update cursor for pagination
+          if (data.items.length > 0) {
+            const lastTopic = data.items[data.items.length - 1];
+            currentCursor = lastTopic.last_activity || lastTopic.timestamp;
+          }
+
+          // Show/hide load more button
+          const loadMoreBtn = document.getElementById('loadMoreBtn');
+          if (data.items.length >= 20) {
+            loadMoreBtn.style.display = 'block';
+          } else {
+            loadMoreBtn.style.display = 'none';
+          }
+        })
+        .catch(error => {
+          console.error('Error loading topics:', error);
+          document.getElementById('topics-container').innerHTML = `
+            <div class="p-4 text-center text-muted">
+              <p class="mb-0">Error loading topics. Please try again.</p>
+            </div>
+          `;
+        })
+        .finally(() => {
+          isLoading = false;
+        });
+    }
+
+    // Load initial topics
+    loadTopics();
+
+    // Load more button handler
+    document.getElementById('loadMoreBtn').addEventListener('click', () => {
+      loadTopics(true);
+    });
+
+    // Sort change handlers
+    document.querySelectorAll('input[name="sort"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        currentCursor = null;
+        loadTopics();
+      });
+    });
+  </script>
+{% endblock %}

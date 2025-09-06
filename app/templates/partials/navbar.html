@@ -11,24 +11,35 @@
         {% if session.username %}
           <li class="nav-item">
             <a class="nav-link d-flex align-items-center gap-2" href="/feed">
-              Feed
+              <i class="bi bi-house"></i> Feed
               <span id="nav-feed-new-count" class="badge text-bg-secondary d-none">0</span>
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/new_post">New Post</a>
+            <a class="nav-link" href="/new_post">
+              <i class="bi bi-plus-circle"></i> New Post
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('ui.forum_home') }}">
+              <i class="bi bi-chat-square-text"></i> Forum
+            </a>
           </li>
           <li class="nav-item">
             <a class="nav-link d-flex align-items-center gap-2" href="/mentions">
-              Mentions
+              <i class="bi bi-at"></i> Mentions
               <span id="nav-mentions-count" class="badge text-bg-secondary">0</span>
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/profile">View Profile</a>
+            <a class="nav-link" href="/profile">
+              <i class="bi bi-person"></i> Profile
+            </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/audit">Audit</a>
+            <a class="nav-link" href="/audit">
+              <i class="bi bi-shield-check"></i> Audit
+            </a>
           </li>
         {% endif %}
       </ul>
@@ -46,12 +57,16 @@
             </div>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/moderation">Moderation</a>
+            <a class="nav-link" href="/moderation">
+              <i class="bi bi-gear"></i> Moderation
+            </a>
           </li>
         {% endif %}
         {% if session.username %}
           <li class="nav-item">
-            <a class="nav-link" href="/logout">Logout</a>
+            <a class="nav-link" href="/logout">
+              <i class="bi bi-box-arrow-right"></i> Logout
+            </a>
           </li>
         {% endif %}
       </ul>

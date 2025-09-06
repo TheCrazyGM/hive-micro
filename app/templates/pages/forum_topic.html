@@ -1,0 +1,334 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ topic.title }} - Forum{% endblock %}
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10 col-12">
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('ui.forum_home') }}">Forum</a>
+          </li>
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('ui.forum_category', category_slug=topic.category.slug) }}">
+              {{ topic.category.name }}
+            </a>
+          </li>
+          <li class="breadcrumb-item active" aria-current="page">{{ topic.title }}</li>
+        </ol>
+      </nav>
+
+      <!-- Topic Header -->
+      <div class="card mb-4" id="topic-{{ topic.trx_id }}">
+        <div class="card-header">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center mb-2">
+                {% if topic.is_pinned %}
+                  <i class="bi bi-pin-angle-fill text-warning me-2"></i>
+                {% endif %}
+                <h2 class="mb-0">{{ topic.title }}</h2>
+                {% if topic.is_locked %}
+                  <i class="bi bi-lock-fill text-muted ms-2"></i>
+                {% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-3 text-muted small">
+                <span>by <strong>{{ topic.author }}</strong></span>
+                <span>
+                  <time class="ts-local" datetime="{{ topic.timestamp }}">{{ topic.timestamp }}</time>
+                </span>
+                <span>{{ topic.reply_count }} replies</span>
+              </div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-primary heart-btn"
+                      data-trx-id="{{ topic.trx_id }}" data-hearted="false">
+                <i class="bi bi-heart"></i> <span class="heart-count">0</span>
+              </button>
+              {% if session.get('username') and not topic.is_locked %}
+                <button class="btn btn-sm btn-primary" id="replyBtn">
+                  <i class="bi bi-reply"></i> Reply
+                </button>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="topic-content" data-topic-trx="{{ topic.trx_id }}">
+            <!-- Content will be loaded via API -->
+            <div class="d-flex justify-content-center p-3">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          </div>
+
+          {% if topic.tags %}
+            <div class="mt-3">
+              {% for tag in topic.tags %}
+                <span class="badge bg-secondary me-1">#{{ tag }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Reply Form (initially hidden) -->
+      {% if session.get('username') and not topic.is_locked %}
+        <div class="card mb-4" id="replyForm" style="display: none;">
+          <div class="card-header">
+            <h6 class="mb-0">Reply to this topic</h6>
+          </div>
+          <div class="card-body">
+            <form id="replyFormElement">
+              <div class="mb-3">
+                <textarea class="form-control" id="replyContent" rows="4"
+                          placeholder="Write your reply..." required></textarea>
+                <div class="form-text">
+                  <span id="charCount">0</span> / <span id="maxChars">1024</span> characters
+                </div>
+              </div>
+              <div class="d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary" id="cancelReply">
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-send"></i> Post Reply
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Posts Container -->
+      <div class="card">
+        <div class="card-header">
+          <h6 class="mb-0">Posts</h6>
+        </div>
+        <div class="card-body p-0">
+          <div id="posts-container">
+            <div class="d-flex justify-content-center p-4">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading posts...</span>
+              </div>
+            </div>
+          </div>
+          <div class="text-center p-3 border-top">
+            <button id="loadMorePostsBtn" class="btn btn-outline-secondary" style="display: none;">
+              Load more posts
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const topicTrxId = '{{ topic.trx_id }}';
+    let currentCursor = null;
+    let isLoading = false;
+
+    function formatTimeAgo(dateString) {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+
+      if (diffInSeconds < 60) return 'just now';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+      if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    function updateHeartButton(button, count, hearted) {
+      const icon = button.querySelector('i');
+      const countSpan = button.querySelector('.heart-count');
+
+      icon.className = hearted ? 'bi bi-heart-fill text-danger' : 'bi bi-heart';
+      countSpan.textContent = count;
+      button.dataset.hearted = hearted;
+      button.classList.toggle('btn-outline-primary', !hearted);
+      button.classList.toggle('btn-outline-danger', hearted);
+    }
+
+    function renderTopicContent(topic) {
+      const container = document.querySelector('.topic-content');
+      container.innerHTML = topic.html || topic.content;
+
+      // Update heart button
+      const heartBtn = document.querySelector('.heart-btn');
+      if (heartBtn) {
+        updateHeartButton(heartBtn, topic.hearts || 0, topic.viewer_hearted || false);
+      }
+    }
+
+    function renderPosts(posts, append = false) {
+      const container = document.getElementById('posts-container');
+
+      if (posts.length === 0 && !append) {
+        container.innerHTML = `
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-chat-dots display-4 d-block mb-3"></i>
+            <p class="mb-0">No replies yet. Be the first to post!</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      posts.forEach(post => {
+        html += `
+          <div class="border-bottom p-3" id="post-${post.trx_id}">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="d-flex align-items-center gap-2">
+                <strong>${post.author}</strong>
+                <small class="text-muted">
+                  <time class="ts-local" datetime="${post.timestamp}">${formatTimeAgo(post.timestamp)}</time>
+                </small>
+              </div>
+              <button class="btn btn-sm btn-outline-primary heart-btn" 
+                      data-trx-id="${post.trx_id}" data-hearted="${post.viewer_hearted || false}">
+                <i class="bi bi-heart${post.viewer_hearted ? '-fill text-danger' : ''}"></i> 
+                <span class="heart-count">${post.hearts || 0}</span>
+              </button>
+            </div>
+            <div class="post-content">
+              ${post.html || post.content}
+            </div>
+          </div>
+        `;
+      });
+
+      if (append) {
+        container.innerHTML += html;
+      } else {
+        container.innerHTML = html;
+      }
+
+      // Attach heart button event listeners
+      attachHeartListeners();
+    }
+
+    function attachHeartListeners() {
+      document.querySelectorAll('.heart-btn').forEach(btn => {
+        btn.onclick = function() {
+          const trxId = this.dataset.trxId;
+          const isHearted = this.dataset.hearted === 'true';
+          const endpoint = isHearted ? '/api/v1/forum/unheart' : '/api/v1/forum/heart';
+
+          fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': window.getCsrfToken()
+            },
+            body: JSON.stringify({ trx_id: trxId })
+          })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                updateHeartButton(this, data.hearts, data.viewer_hearted);
+              }
+            })
+            .catch(error => console.error('Heart error:', error));
+        };
+      });
+    }
+
+    function loadTopic() {
+      fetch(`/api/v1/forum/topics/${topicTrxId}`)
+        .then(response => response.json())
+        .then(data => {
+          renderTopicContent(data.topic);
+          renderPosts(data.posts);
+
+          // Update cursor for pagination
+          if (data.posts.length > 0) {
+            const lastPost = data.posts[data.posts.length - 1];
+            currentCursor = lastPost.timestamp;
+          }
+
+          // Show/hide load more button
+          const loadMoreBtn = document.getElementById('loadMorePostsBtn');
+          if (data.posts.length >= 50) {
+            loadMoreBtn.style.display = 'block';
+          }
+        })
+        .catch(error => {
+          console.error('Error loading topic:', error);
+          document.querySelector('.topic-content').innerHTML = 'Error loading topic content.';
+          document.getElementById('posts-container').innerHTML = 'Error loading posts.';
+        });
+    }
+
+    // Load initial topic and posts
+    loadTopic();
+
+    // Reply form handlers
+    const replyBtn = document.getElementById('replyBtn');
+    const replyForm = document.getElementById('replyForm');
+    const cancelReply = document.getElementById('cancelReply');
+    const replyFormElement = document.getElementById('replyFormElement');
+    const replyContent = document.getElementById('replyContent');
+
+    if (replyBtn) {
+      replyBtn.onclick = () => {
+        replyForm.style.display = 'block';
+        replyContent.focus();
+      };
+    }
+
+    if (cancelReply) {
+      cancelReply.onclick = () => {
+        replyForm.style.display = 'none';
+        replyContent.value = '';
+      };
+    }
+
+    if (replyFormElement) {
+      // Character counter
+      replyContent.oninput = () => {
+        document.getElementById('charCount').textContent = replyContent.value.length;
+      };
+
+      replyFormElement.onsubmit = (e) => {
+        e.preventDefault();
+
+        const content = replyContent.value.trim();
+        if (!content) return;
+
+        // Use Hive Keychain to broadcast the reply
+        const postData = {
+          app: window.HIVE_FORUM_APP_ID,
+          v: 1,
+          type: "post",
+          content: content,
+          topic_id: topicTrxId
+        };
+
+        window.hive_keychain.requestCustomJson(
+          '{{ session.get("username") }}',
+          window.HIVE_FORUM_APP_ID,
+          'Posting',
+          JSON.stringify(postData),
+          'Post Reply',
+          (response) => {
+            if (response.success) {
+              replyForm.style.display = 'none';
+              replyContent.value = '';
+              // Reload posts after a short delay
+              setTimeout(() => loadTopic(), 2000);
+            } else {
+              alert('Error posting reply: ' + response.message);
+            }
+          }
+        );
+      };
+    }
+
+    // Helper function to get CSRF token
+    window.getCsrfToken = function() {
+      return window.CSRF_TOKEN || document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    };
+  </script>
+{% endblock %}
