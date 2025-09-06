@@ -125,7 +125,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (items.length > 0) {
-        cursor = items[items.length - 1].timestamp;
+        const last = items[items.length - 1];
+        cursor = last.mod_ts || last.mod_at || last.last_action_at || last.timestamp || null;
         loadMoreBtn.disabled = false;
       } else {
         loadMoreBtn.style.display = 'none';
