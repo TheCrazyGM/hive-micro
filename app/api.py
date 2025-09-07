@@ -699,31 +699,68 @@ def mod_list():
     except Exception:
         limit = 20
     limit = max(1, min(limit, 100))
-    only_hidden = request.args.get("only_hidden") == "1"
     status = (request.args.get("status") or "all").strip().lower()
     if status not in ("all", "hidden", "pending"):
         status = "all"
     cursor = request.args.get("cursor")
-    q = Message.query
+    cursor_dt = None
     if cursor:
         try:
-            dt = datetime.fromisoformat(cursor)
-            q = q.filter(Message.timestamp < dt)
+            cursor_dt = datetime.fromisoformat(cursor)
         except Exception:
-            pass
-    q = q.order_by(Message.timestamp.desc()).limit(limit)
-    rows = q.all()
-    items = []
-    quorum = int(current_app.config.get("MOD_QUORUM", 1))
-    for m in rows:
-        mod = Moderation.query.filter_by(trx_id=m.trx_id).first()
-        hidden = bool(mod and mod.visibility == "hidden")
+            cursor_dt = None
 
+    quorum = int(current_app.config.get("MOD_QUORUM", 1))
+    items: list[dict] = []
+
+    # 1) Hidden items ordered by moderation time
+    mod_q = Moderation.query.filter(Moderation.visibility == "hidden")
+    if cursor_dt is not None:
+        mod_q = mod_q.filter(Moderation.mod_at < cursor_dt)
+    mod_q = mod_q.order_by(Moderation.mod_at.desc()).limit(limit)
+    hidden_rows = mod_q.all()
+    for mod in hidden_rows:
+        m = Message.query.filter_by(trx_id=mod.trx_id).first()
+        if not m:
+            continue
+        items.append(
+            {
+                "trx_id": m.trx_id,
+                # Use moderation timestamp for ordering/pagination
+                "timestamp": mod.mod_at.isoformat()
+                if mod.mod_at
+                else m.timestamp.isoformat(),
+                "author": m.author,
+                "content": m.content,
+                "tags": json.loads(m.tags) if m.tags else [],
+                "hidden": True,
+                "pending": False,
+                "approvals": None,
+                "quorum": quorum,
+                "mod_reason": mod.mod_reason if mod and mod.mod_reason else None,
+            }
+        )
+
+    # 2) Pending items: latest hide approvals since last unhide, ordered by last action time
+    act_q = ModerationAction.query.filter(ModerationAction.action == "hide")
+    if cursor_dt is not None:
+        act_q = act_q.filter(ModerationAction.created_at < cursor_dt)
+    act_q = act_q.order_by(ModerationAction.created_at.desc()).limit(limit * 3)
+    acts = act_q.all()
+    seen_trx: set[str] = set()
+    for a in acts:
+        if a.trx_id in seen_trx:
+            continue
+        seen_trx.add(a.trx_id)
+        # Skip if already hidden
+        mod = Moderation.query.filter_by(trx_id=a.trx_id).first()
+        if mod and mod.visibility == "hidden":
+            continue
         # Compute approvals since last unhide
         last_unhide = (
             db.session.query(ModerationAction.created_at)
             .filter(
-                ModerationAction.trx_id == m.trx_id,
+                ModerationAction.trx_id == a.trx_id,
                 ModerationAction.action == "unhide",
             )
             .order_by(ModerationAction.created_at.desc())
@@ -731,40 +768,70 @@ def mod_list():
         )
         cutoff = last_unhide[0] if last_unhide else None
         approvals_q = db.session.query(ModerationAction.moderator).filter(
-            ModerationAction.trx_id == m.trx_id,
+            ModerationAction.trx_id == a.trx_id,
             ModerationAction.action == "hide",
         )
         if cutoff is not None:
             approvals_q = approvals_q.filter(ModerationAction.created_at > cutoff)
         approvals = approvals_q.distinct().count()
 
-        # Determine pending state: has approvals but below quorum and not hidden yet
-        pending = (
-            (not hidden) and (quorum > 1) and (approvals > 0) and (approvals < quorum)
+        pending = (quorum > 1) and (approvals > 0) and (approvals < quorum)
+        if not pending:
+            continue
+
+        # Get latest hide action time and reason after cutoff
+        hide_actions_q = ModerationAction.query.filter(
+            ModerationAction.trx_id == a.trx_id,
+            ModerationAction.action == "hide",
         )
+        if cutoff is not None:
+            hide_actions_q = hide_actions_q.filter(ModerationAction.created_at > cutoff)
+        latest_hide = hide_actions_q.order_by(
+            ModerationAction.created_at.desc()
+        ).first()
 
-        # Back-compat only_hidden or new status filter
-        if only_hidden and not hidden:
+        m = Message.query.filter_by(trx_id=a.trx_id).first()
+        if not m:
             continue
-        if status == "hidden" and not hidden:
-            continue
-        if status == "pending" and not pending:
-            continue
-
         items.append(
             {
                 "trx_id": m.trx_id,
-                "timestamp": m.timestamp.isoformat(),
+                # Use latest hide action time as moderation timestamp
+                "timestamp": latest_hide.created_at.isoformat()
+                if latest_hide
+                else m.timestamp.isoformat(),
                 "author": m.author,
                 "content": m.content,
                 "tags": json.loads(m.tags) if m.tags else [],
-                "hidden": hidden,
-                "pending": pending,
-                "approvals": approvals,
+                "hidden": False,
+                "pending": True,
+                "approvals": int(approvals),
                 "quorum": quorum,
-                "mod_reason": (mod.mod_reason if (mod and mod.mod_reason) else None),
+                "mod_reason": None,
             }
         )
+
+    # Apply status filter similar to public audit
+    if status == "hidden":
+        items = [it for it in items if it.get("hidden") is True]
+    elif status == "pending":
+        items = [it for it in items if it.get("pending") is True]
+    else:
+        items = [
+            it
+            for it in items
+            if (it.get("hidden") or it.get("pending") or it.get("mod_reason"))
+        ]
+
+    # Final ordering by moderation timestamp
+    def _pick_ts(x: dict) -> str:
+        return x.get("timestamp") or ""
+
+    items.sort(key=lambda it: _pick_ts(it), reverse=True)
+
+    # Enforce limit
+    items = items[:limit]
+
     return jsonify({"items": items})
 
 
