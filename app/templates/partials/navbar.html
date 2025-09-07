@@ -11,24 +11,35 @@
         {% if session.username %}
           <li class="nav-item">
             <a class="nav-link d-flex align-items-center gap-2" href="/feed">
-              Feed
+              <i class="bi bi-house-door"></i>
+              <span>Feed</span>
               <span id="nav-feed-new-count" class="badge text-bg-secondary d-none">0</span>
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/new_post">New Post</a>
+            <a class="nav-link d-flex align-items-center gap-2" href="/new_post">
+              <i class="bi bi-plus-square"></i>
+              <span>New Post</span>
+            </a>
           </li>
           <li class="nav-item">
             <a class="nav-link d-flex align-items-center gap-2" href="/mentions">
-              Mentions
+              <i class="bi bi-at"></i>
+              <span>Mentions</span>
               <span id="nav-mentions-count" class="badge text-bg-secondary">0</span>
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/profile">View Profile</a>
+            <a class="nav-link d-flex align-items-center gap-2" href="/profile">
+              <i class="bi bi-person"></i>
+              <span>Profile</span>
+            </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/audit">Audit</a>
+            <a class="nav-link d-flex align-items-center gap-2" href="/audit">
+              <i class="bi bi-clipboard-check"></i>
+              <span>Audit</span>
+            </a>
           </li>
         {% endif %}
       </ul>
@@ -46,12 +57,18 @@
             </div>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/moderation">Moderation</a>
+            <a class="nav-link d-flex align-items-center gap-2" href="/moderation">
+              <i class="bi bi-gear"></i>
+              <span>Moderation</span>
+            </a>
           </li>
         {% endif %}
         {% if session.username %}
           <li class="nav-item">
-            <a class="nav-link" href="/logout">Logout</a>
+            <a class="nav-link d-flex align-items-center gap-2" href="/logout">
+              <i class="bi bi-box-arrow-right"></i>
+              <span>Logout</span>
+            </a>
           </li>
         {% endif %}
       </ul>
