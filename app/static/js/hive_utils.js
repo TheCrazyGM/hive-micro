@@ -165,12 +165,63 @@
   window.buildTagChips = buildTagChips;
 
   // Build an "in reply to" indicator element if reply_to provided
-  function buildReplyIndicator(reply_to) {
+  async function buildReplyIndicator(reply_to) {
     if (!reply_to) return null;
     var el = document.createElement('div');
     el.className = 'reply-indicator small mb-1';
-    var parentLink = '/p/' + encodeURIComponent(String(reply_to));
-    el.innerHTML = 'in reply to <a href="' + parentLink + '">parent</a>';
+
+    try {
+      // Fetch parent post data
+      const res = await fetch(`/api/v1/post/${encodeURIComponent(reply_to)}`);
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      const parent = data && data.item ? data.item : null;
+      if (!parent) throw new Error("no parent data");
+
+      // Create preview container
+      const previewDiv = document.createElement('div');
+      previewDiv.className = 'border-start border-secondary ps-2 ms-2 mb-2';
+      previewDiv.style.maxHeight = '100px';
+      previewDiv.style.overflow = 'hidden';
+
+      // Header with avatar and author
+      const header = document.createElement('div');
+      header.className = 'd-flex align-items-center gap-1 mb-1';
+      const avatar = window.createAvatarImg ? window.createAvatarImg(parent.author, 20) : (function(){
+        const im = document.createElement('img');
+        im.src = `https://images.hive.blog/u/${encodeURIComponent(String(parent.author).toLowerCase())}/avatar`;
+        im.alt = `@${parent.author}`;
+        im.width = 20;
+        im.height = 20;
+        im.loading = 'lazy';
+        im.className = 'rounded-circle flex-shrink-0';
+        im.style.objectFit = 'cover';
+        return im;
+      })();
+      const authorLink = document.createElement('a');
+      authorLink.href = `/u/${encodeURIComponent(String(parent.author).toLowerCase())}`;
+      authorLink.className = 'text-decoration-none small fw-bold';
+      authorLink.textContent = `@${parent.author}`;
+      header.appendChild(avatar);
+      header.appendChild(authorLink);
+
+      // Content snippet
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'small text-muted';
+      const contentText = parent.content || '';
+      const snippet = contentText.length > 100 ? contentText.substring(0, 100) + '...' : contentText;
+      contentDiv.innerHTML = window.linkifyText ? window.linkifyText(snippet) : (window.escapeHTML ? window.escapeHTML(snippet) : snippet);
+
+      previewDiv.appendChild(header);
+      previewDiv.appendChild(contentDiv);
+      el.appendChild(previewDiv);
+    } catch (e) {
+      // Fallback to simple link if fetch fails
+      console.warn('Failed to load reply preview:', e);
+      var parentLink = '/p/' + encodeURIComponent(String(reply_to));
+      el.innerHTML = 'in reply to <a href="' + parentLink + '">parent</a>';
+    }
+
     return el;
   }
   window.buildReplyIndicator = buildReplyIndicator;
