@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function linkify(text) { return window.linkifyText ? window.linkifyText(text) : String(text || ''); }
 
-  function renderItem(item) {
+  async function renderItem(item) {
     const card = document.createElement("div");
     card.className = "card mb-3";
 
@@ -39,8 +39,8 @@ document.addEventListener("DOMContentLoaded", () => {
     p.className = "card-text";
     p.innerHTML = linkify(item.content);
 
-    // In reply to indicator
-    let replyIndicator = window.buildReplyIndicator ? window.buildReplyIndicator(item.reply_to) : null;
+    // In reply to indicator (async)
+    let replyIndicator = window.buildReplyIndicator ? await window.buildReplyIndicator(item.reply_to) : null;
 
     const meta = document.createElement("div");
     meta.className = "post-meta d-flex justify-content-between align-items-center flex-nowrap gap-2";
@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       const items = data.items || [];
       for (const it of items) {
-        const card = renderItem(it);
+        const card = await renderItem(it);
         container.appendChild(card);
       }
       if (items.length > 0) {
