@@ -98,7 +98,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // linkify handled by shared window.linkifyText
 
-  function renderItem(item) {
+  // linkify handled by shared window.linkifyText
+
+  async function renderItem(item) {
     const card = document.createElement("div");
     card.className = "card mb-3";
 
@@ -125,8 +127,8 @@ document.addEventListener("DOMContentLoaded", () => {
     p.className = "card-text";
     p.innerHTML = item.html || (window.linkifyText ? window.linkifyText(item.content) : String(item.content));
 
-    // In reply to indicator
-    let replyIndicator = window.buildReplyIndicator ? window.buildReplyIndicator(item.reply_to) : null;
+    // In reply to indicator (now async)
+    let replyIndicator = window.buildReplyIndicator ? await window.buildReplyIndicator(item.reply_to) : null;
 
     const meta = document.createElement("div");
     meta.className = "post-meta d-flex justify-content-between align-items-center flex-nowrap gap-2";
@@ -320,7 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
         latestTopTs = items[0].timestamp;
       }
       for (const it of items) {
-        const card = renderItem(it);
+        const card = await renderItem(it);
         feedContainer.appendChild(card);
       }
       if (items.length > 0) {
