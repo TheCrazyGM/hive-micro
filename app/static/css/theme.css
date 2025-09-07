@@ -388,18 +388,55 @@ html[data-bs-theme="dark"] .codehilite .s, .codehilite .s1, .codehilite .s2, .co
 } /* Strings - pink for contrast */
 html[data-bs-theme="dark"] .codehilite .p { color: #e2e8f0; }
 
-/* Responsive images inside post content */
-.card-text img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  margin: .5rem 0;
-  border-radius: 6px;
+/* Table responsive styles for theme consistency */
+.table-responsive {
+  background-color: var(--surface-1);
+  border-radius: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  overflow: hidden;
+}
+.table-responsive .table {
+  margin-bottom: 0;
+  background-color: var(--surface-1);
+  color: var(--bs-body-color);
+}
+.table-responsive .table th,
+.table-responsive .table td {
+  border-color: var(--bs-border-color);
+  color: var(--bs-body-color);
+}
+.table-responsive .table thead th {
+  background-color: var(--surface-2);
+  border-bottom: 2px solid var(--bs-border-color);
+  font-weight: 600;
+}
+.table-responsive .table tbody tr:nth-child(even) {
+  background-color: var(--surface-2);
+}
+.table-responsive .table tbody tr:hover {
+  background-color: var(--bs-secondary-bg);
 }
 
-/* Smooth theme transitions for common surfaces */
-html, body,
-.card, .list-group-item, .accordion-button, .accordion-item,
-.navbar, .navbar * {
-  transition: background-color .25s ease, color .25s ease, border-color .25s ease;
+html[data-bs-theme="dark"] .table-responsive {
+  background-color: var(--surface-1);
+  border-color: var(--bs-border-color);
+}
+html[data-bs-theme="dark"] .table-responsive .table {
+  background-color: var(--surface-1);
+  color: var(--bs-body-color);
+}
+html[data-bs-theme="dark"] .table-responsive .table th,
+html[data-bs-theme="dark"] .table-responsive .table td {
+  border-color: var(--bs-border-color);
+  color: var(--bs-body-color);
+}
+html[data-bs-theme="dark"] .table-responsive .table thead th {
+  background-color: var(--surface-2);
+  border-bottom-color: var(--bs-border-color);
+}
+html[data-bs-theme="dark"] .table-responsive .table tbody tr:nth-child(even) {
+  background-color: var(--surface-2);
+}
+html[data-bs-theme="dark"] .table-responsive .table tbody tr:hover {
+  background-color: var(--bs-secondary-bg);
 }
