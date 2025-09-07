@@ -1,15 +1,12 @@
 from __future__ import annotations
-from logging.config import fileConfig
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy import create_engine
-
-from app import create_app
-from app.models import db
+from alembic import context
 
 # Ensure project root is on sys.path so 'app' package can be imported
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +16,9 @@ if str(PROJECT_ROOT) not in sys.path:
 # Disable watcher during migrations by default
 os.environ.setdefault("HIVE_DISABLE_WATCHER", "1")
 
+# Import Flask app and SQLAlchemy models to get metadata
+from app import create_app  # noqa: E402
+from app.models import db  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
