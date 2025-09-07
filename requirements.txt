@@ -8,3 +8,7 @@ gunicorn
 # Hive blockchain libraries
 hive-nectar
 
+# Database migrations and drivers
+alembic
+psycopg2-binary
+

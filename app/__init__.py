@@ -117,8 +117,16 @@ def create_app():
             if not tok or hdr != tok or cky != tok:
                 return abort(403)
 
-    start_block_watcher(app)
-    atexit.register(stop_block_watcher)
+    # Allow disabling the watcher in contexts like Alembic migrations
+    disable_watcher = os.environ.get("HIVE_DISABLE_WATCHER", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if not disable_watcher:
+        start_block_watcher(app)
+        atexit.register(stop_block_watcher)
 
     # --- Jinja Filters ---
     @app.template_filter("tolocaltime")
