@@ -316,10 +316,13 @@
             if (response.success) {
               replyForm.style.display = 'none';
               replyContent.value = '';
+              if (window.showToast) showToast('Reply posted! It may take a moment to appear.', 'success');
               // Reload posts after a short delay
               setTimeout(() => loadTopic(), 2000);
             } else {
-              alert('Error posting reply: ' + response.message);
+              const msg = 'Error posting reply: ' + (response.message || 'Unknown error');
+              if (window.showToast) showToast(msg, 'danger');
+              else alert(msg);
             }
           }
         );

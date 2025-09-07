@@ -88,8 +88,11 @@
         const pinnedBadge = topic.is_pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : '';
         const lockedIcon = topic.is_locked ? '<i class="bi bi-lock-fill text-muted ms-1"></i>' : '';
 
+        // Build forum topic URL with the real trx_id
+        const topicUrl = "{{ url_for('ui.forum_topic', trx_id='__ID__') }}".replace('__ID__', encodeURIComponent(topic.trx_id));
+
         html += `
-          <a href="{{ url_for('ui.forum_topic', trx_id='TOPIC_ID') }}".replace('TOPIC_ID', topic.trx_id)
+          <a href="${topicUrl}"
              class="list-group-item list-group-item-action">
             <div class="d-flex justify-content-between align-items-start">
               <div class="flex-grow-1">

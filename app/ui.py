@@ -294,7 +294,30 @@ def forum_topic(trx_id: str):
     if topic.is_hidden and not is_mod:
         return render_template("errors/404.html"), 404
 
-    return render_template("pages/forum_topic.html", topic=topic)
+    # Prepare view model with parsed tags so Jinja iterates list, not characters
+    try:
+        parsed_tags = json.loads(topic.tags) if topic.tags else []
+        if not isinstance(parsed_tags, list):
+            parsed_tags = []
+    except Exception:
+        parsed_tags = []
+
+    topic_view = {
+        "trx_id": topic.trx_id,
+        "title": topic.title,
+        "author": topic.author,
+        "timestamp": topic.timestamp,
+        "reply_count": topic.reply_count,
+        "is_locked": bool(topic.is_locked),
+        "is_pinned": bool(topic.is_pinned),
+        "category": {
+            "slug": topic.category.slug if topic.category else "",
+            "name": topic.category.name if topic.category else "",
+        },
+        "tags": parsed_tags,
+    }
+
+    return render_template("pages/forum_topic.html", topic=topic_view)
 
 
 @ui_bp.route("/forum/new_topic")

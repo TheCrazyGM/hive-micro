@@ -222,7 +222,8 @@
       const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t);
 
       if (!title || !content) {
-        alert('Please fill in title and content before previewing.');
+        if (window.showToast) showToast('Please fill in title and content before previewing.', 'warning');
+        else alert('Please fill in title and content before previewing.');
         return;
       }
 
@@ -263,12 +264,14 @@
         const newName = newCategoryName.value.trim();
 
         if (!newSlug || !newName) {
-          alert('Please fill in the new category slug and name.');
+          if (window.showToast) showToast('Please fill in the new category slug and name.', 'warning');
+          else alert('Please fill in the new category slug and name.');
           return;
         }
 
         if (!/^[a-z0-9-]+$/.test(newSlug)) {
-          alert('Category slug can only contain lowercase letters, numbers, and hyphens.');
+          if (window.showToast) showToast('Category slug can only contain lowercase letters, numbers, and hyphens.', 'warning');
+          else alert('Category slug can only contain lowercase letters, numbers, and hyphens.');
           return;
         }
 
@@ -276,17 +279,20 @@
       }
 
       if (!title || !content || !category) {
-        alert('Please fill in all required fields.');
+        if (window.showToast) showToast('Please fill in all required fields.', 'warning');
+        else alert('Please fill in all required fields.');
         return;
       }
 
       if (title.length > 200) {
-        alert('Title is too long. Maximum 200 characters.');
+        if (window.showToast) showToast('Title is too long. Maximum 200 characters.', 'danger');
+        else alert('Title is too long. Maximum 200 characters.');
         return;
       }
 
       if (content.length > 2048) {
-        alert('Content is too long. Maximum 2048 characters.');
+        if (window.showToast) showToast('Content is too long. Maximum 2048 characters.', 'danger');
+        else alert('Content is too long. Maximum 2048 characters.');
         return;
       }
 
@@ -304,7 +310,8 @@
 
       // Check if Hive Keychain is available
       if (!window.hive_keychain) {
-        alert('Hive Keychain is required to create topics. Please install the extension.');
+        if (window.showToast) showToast('Hive Keychain is required to create topics. Please install the extension.', 'warning');
+        else alert('Hive Keychain is required to create topics. Please install the extension.');
         return;
       }
 
@@ -322,11 +329,14 @@
         'Create Forum Topic',
         (response) => {
           if (response.success) {
-            alert('Topic created successfully! It may take a few moments to appear.');
+            if (window.showToast) showToast('Topic created successfully! It may take a few moments to appear.', 'success');
+            else alert('Topic created successfully! It may take a few moments to appear.');
             // Redirect to forum home
             window.location.href = '{{ url_for("ui.forum_home") }}';
           } else {
-            alert('Error creating topic: ' + response.message);
+            const msg = 'Error creating topic: ' + (response.message || 'Unknown error');
+            if (window.showToast) showToast(msg, 'danger');
+            else alert(msg);
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="bi bi-send"></i> Create Topic';
           }
