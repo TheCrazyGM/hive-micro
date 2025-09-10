@@ -294,6 +294,25 @@ html[data-bs-theme="dark"] .tag-chip:focus {
   flex: 0 0 auto;
 }
 
+/* Responsive media inside post content */
+.card-text img,
+.card-text video,
+.card-text iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Ensure embeds don't overflow; let iframes scale to container */
+.card-text iframe {
+  width: 100%;
+}
+
+/* Reset figure margins to avoid unexpected overflow */
+.card-text figure {
+  max-width: 100%;
+  margin: 0;
+}
+
 /* --- Code & Syntax Highlighting (Pygments via codehilite) --- Enhanced for better visibility --- */
 /* Inline code */
 code {
