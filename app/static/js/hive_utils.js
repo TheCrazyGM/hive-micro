@@ -240,3 +240,43 @@
   }
   window.buildTrxLink = buildTrxLink;
 })();
+
+// YouTube preview helpers (click-to-embed + resilient thumbnails)
+(function(){
+  function handleYouTubePreviewClick(node){
+    try{
+      const url = node.getAttribute('data-video-url');
+      if(!url) return;
+      const iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.title = 'YouTube';
+      iframe.setAttribute('allow','accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      iframe.setAttribute('allowfullscreen','');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = '0';
+      // Keep parent aspect ratio: inject iframe inside the preview container
+      node.innerHTML = '';
+      node.appendChild(iframe);
+    }catch(_){}
+  }
+
+  // Keep original thumbnails as-is; no custom replacement/fallbacks
+  function onYouTubeThumbLoad(img){ /* no-op by design */ }
+
+  function initYouTubePreviews(root){ /* no extra init needed for thumbnails */ }
+
+  // Delegate click handling
+  document.addEventListener('click', function(ev){
+    try{
+      const el = ev.target.closest('.youtubePreview');
+      if(!el) return;
+      ev.preventDefault();
+      handleYouTubePreviewClick(el);
+    }catch(_){ }
+  });
+
+  // Initialize on DOM ready and expose helper for dynamic content
+  document.addEventListener('DOMContentLoaded', function(){ initYouTubePreviews(document); });
+  window.initYouTubePreviews = initYouTubePreviews;
+})();

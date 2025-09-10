@@ -65,6 +65,11 @@ def create_app():
         "HIVE_MICRO_MOD_REQUIRE_SIG", "0"
     ) in ("1", "true", "yes", "on")
 
+    # Feature flags
+    app.config["YOUTUBE_PREVIEW"] = os.environ.get(
+        "HIVE_MICRO_YOUTUBE_PREVIEW", "0"
+    ) in ("1", "true", "yes", "on")
+
     db.init_app(app)
     cache.init_app(app)
     app.config["APP_ID"] = os.environ.get("HIVE_MICRO_APP_ID", "hive.micro")

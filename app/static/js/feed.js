@@ -126,6 +126,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const p = document.createElement("p");
     p.className = "card-text";
     p.innerHTML = item.html || (window.linkifyText ? window.linkifyText(item.content) : String(item.content));
+    // Initialize any dynamic previews (e.g., YouTube) within this card
+    try { if (window.initYouTubePreviews) window.initYouTubePreviews(p.parentElement || card); } catch (_) {}
 
     // In reply to indicator (now async)
     let replyIndicator = window.buildReplyIndicator ? await window.buildReplyIndicator(item.reply_to) : null;

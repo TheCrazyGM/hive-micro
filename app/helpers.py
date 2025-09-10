@@ -149,6 +149,75 @@ def markdown_render(content: str) -> str:
             safe = _re2.sub(r"<a\b(?![^>]*\brel=)[^>]*>", _add_rel, safe)
         except Exception:
             pass
+        # Replace valid YouTube links with a lightweight preview block (feature-flagged)
+        try:
+            from flask import current_app as _curr_app
+
+            if not (_curr_app and _curr_app.config.get("YOUTUBE_PREVIEW", False)):
+                # Feature disabled: return sanitized HTML as-is
+                return safe
+            import re as _reyt
+            from urllib.parse import urlparse, parse_qs
+
+            VALID_HOSTS = {
+                "www.youtube.com",
+                "youtube.com",
+                "m.youtube.com",
+                "youtu.be",
+            }
+
+            def _extract_vid(url: str) -> str | None:
+                try:
+                    p = urlparse(url)
+                    if p.netloc not in VALID_HOSTS:
+                        return None
+                    vid = None
+                    if p.netloc == "youtu.be":
+                        vid = p.path.lstrip("/")
+                    elif p.path.startswith("/shorts/"):
+                        parts = p.path.split("/")
+                        vid = parts[2] if len(parts) > 2 else None
+                    elif p.path.startswith("/embed/"):
+                        parts = p.path.split("/")
+                        vid = parts[2] if len(parts) > 2 else None
+                    else:
+                        q = parse_qs(p.query)
+                        vid = (q.get("v") or [None])[0]
+                    if vid and _reyt.match(r"^[a-zA-Z0-9_-]{11}$", vid):
+                        return vid
+                    return None
+                except Exception:
+                    return None
+
+            def _preview_html(video_id: str) -> str:
+                thumb = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+                embed = f"https://www.youtube.com/embed/{video_id}?autoplay=1"
+                return (
+                    '<div class="youtubePreview" role="button" tabindex="0" '
+                    f'data-video-url="{embed}">'  # handled by JS click listener
+                    "<div>"
+                    f'<img class="youtubeThumbnail" src="{thumb}" alt="YouTube video thumbnail" loading="lazy" />'
+                    "</div>"
+                    '<div class="playButton">'
+                    '<svg class="playIcon" width="68" height="48" viewBox="0 0 68 48" aria-hidden="true">'
+                    '<path d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z" fill="#f00"/>'
+                    '<path d="M45,24 27,14 27,34" fill="#fff"/></svg>'
+                    "</div>"
+                    "</div>"
+                )
+
+            # Replace anchors that point to YouTube with preview markup
+            def _replace_anchor(m):
+                href = m.group(1)
+                vid = _extract_vid(href)
+                return _preview_html(vid) if vid else m.group(0)
+
+            safe = _reyt.sub(
+                r'<a\s+[^>]*href="([^"]+)"[^>]*>[^<]*<\/a>', _replace_anchor, safe
+            )
+        except Exception:
+            pass
+
         return safe
     except Exception:
         # Fallback: escape everything via bleach
