@@ -8,16 +8,40 @@
         <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?"
                   maxlength="{{ config['CONTENT_MAX_LEN'] }}"></textarea>
       </div>
-      <div class="form-text">Characters: <span id="charCounter">0 / {{ config['CONTENT_MAX_LEN'] }}</span></div>
-      <div class="form-text mb-3">
-        Tip: Basic Markdown is supported (bold, italics, links, images, code). Examples:
-        <code>**bold**</code>
-        <code>_italic_</code>
-        <code>[link](https://example.com)</code>
-        <code>![](https://...)</code>
-        <code>`inline code`</code>
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="addImageBtn">
+          <i class="bi bi-image"></i> Add Image
+        </button>
+        <small class="text-muted">
+          Markdown: <code>**bold**</code> <code>_italic_</code> <code>[link](…)</code> <code>![](…)</code> <code>`code`</code>
+        </small>
       </div>
+      <div class="form-text mb-3">Characters: <span id="charCounter">0 / {{ config['CONTENT_MAX_LEN'] }}</span></div>
       <button type="submit" class="btn btn-primary">Post</button>
     </form>
+  </div>
+</div>
+
+<!-- Image Upload Modal -->
+<div class="modal fade" id="imageUploadModal" tabindex="-1" aria-labelledby="imageUploadModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageUploadModalLabel">Add Image</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="imageFileInput" class="form-label">Select image</label>
+          <input type="file" class="form-control" id="imageFileInput" accept="image/*" />
+          <div class="form-text">Your image will be uploaded to images.hive.blog using a Hive Keychain signature.</div>
+        </div>
+        <div id="imageUploadStatus" class="small text-muted"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="imageUploadBtn">Upload & Insert</button>
+      </div>
+    </div>
   </div>
 </div>
