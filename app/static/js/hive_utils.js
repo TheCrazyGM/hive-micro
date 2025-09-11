@@ -87,6 +87,17 @@
   }
   window.setMentionBadge = setMentionBadge;
 
+  function setModBadge(count) {
+    try {
+      var badge = document.getElementById('nav-mod-pending-count');
+      if (!badge) return;
+      var n = Number(count) || 0;
+      badge.textContent = n;
+      badge.className = n > 0 ? 'badge text-bg-primary' : 'badge text-bg-secondary';
+    } catch (_) {}
+  }
+  window.setModBadge = setModBadge;
+
   function setFeedNewBadge(count) {
     try {
       var badge = document.getElementById('nav-feed-new-count');

@@ -159,10 +159,21 @@
                         }
                     }
                 }
+                async function refreshModPending(){
+                    try{
+                        if (!window.HIVE_IS_MOD) return;
+                        const r = await fetch('/api/v1/mod/pending_count');
+                        if (!r.ok) throw new Error('bad');
+                        const d = await r.json();
+                        if (window.setModBadge) setModBadge(d.count);
+                    }catch(_){ if (window.setModBadge) setModBadge(0); }
+                }
                 refresh();
                 refreshMentionCount();
+                refreshModPending();
                 setInterval(refresh, 15000);
                 setInterval(refreshMentionCount, 20000);
+                setInterval(refreshModPending, 22000);
             });
         </script>
     </body>

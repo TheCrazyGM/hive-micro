@@ -6,6 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let cursor = null;
   let loading = false;
 
+  async function markSeen(){
+    try{
+      const csrf = (window.getCsrfToken ? window.getCsrfToken() : (document.querySelector('meta[name="csrf-token"]')?.content || window.CSRF_TOKEN || ''));
+      await fetch('/api/v1/mod/seen', { method:'POST', headers:{ 'X-CSRF-Token': csrf } });
+      if (window.setModBadge) setModBadge(0);
+    }catch(_){ }
+  }
+
   function esc(s) { return String(s).replace(/[&<>"]+/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
   async function load(reset=false) {
@@ -122,4 +130,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadMoreBtn.addEventListener('click', ()=> load(false));
   refreshBtn.addEventListener('click', ()=> load(true));
   statusFilter.addEventListener('change', ()=> load(true));
+
+  // Mark seen when page loads and on focus/visibility
+  markSeen();
+  window.addEventListener('focus', () => markSeen());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') markSeen();
+  });
 });

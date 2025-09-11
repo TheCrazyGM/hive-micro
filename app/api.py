@@ -13,6 +13,7 @@ from .helpers import (
 from .models import (
     Checkpoint,
     MentionState,
+    ModerationState,
     Message,
     Moderation,
     ModerationAction,
@@ -1005,3 +1006,92 @@ def mod_unhide():
         mod.mod_at = _utcnow_naive()
     db.session.commit()
     return jsonify({"success": True})
+
+
+# --- Moderator navbar pending notifications ---
+@api_bp.route("/mod/pending_count")
+def api_mod_pending_count():
+    if "username" not in session:
+        return jsonify({"count": 0}), 401
+    uname = session["username"].lower()
+    if uname not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"count": 0}), 403
+
+    # Last seen marker for moderator
+    state = ModerationState.query.get(uname)
+    last_seen = state.last_seen if state and state.last_seen else None
+
+    quorum = int(current_app.config.get("MOD_QUORUM", 1))
+    count = 0
+
+    # Consider items currently pending quorum
+    # Strategy mirrors mod_audit/mod_list: latest hide approvals since last unhide
+    act_q = (
+        ModerationAction.query.filter(ModerationAction.action == "hide")
+        .order_by(ModerationAction.created_at.desc())
+        .limit(300)
+    )
+    acts = act_q.all()
+    seen_trx = set()
+    for a in acts:
+        if a.trx_id in seen_trx:
+            continue
+        seen_trx.add(a.trx_id)
+        # Skip if already hidden
+        mod = Moderation.query.filter_by(trx_id=a.trx_id).first()
+        if mod and mod.visibility == "hidden":
+            continue
+        # Determine cutoff at last unhide
+        last_unhide = (
+            db.session.query(ModerationAction.created_at)
+            .filter(
+                ModerationAction.trx_id == a.trx_id,
+                ModerationAction.action == "unhide",
+            )
+            .order_by(ModerationAction.created_at.desc())
+            .first()
+        )
+        cutoff = last_unhide[0] if last_unhide else None
+        approvals_q = db.session.query(ModerationAction.moderator).filter(
+            ModerationAction.trx_id == a.trx_id,
+            ModerationAction.action == "hide",
+        )
+        if cutoff is not None:
+            approvals_q = approvals_q.filter(ModerationAction.created_at > cutoff)
+        approvals = approvals_q.distinct().count()
+        pending = (quorum > 1) and (approvals > 0) and (approvals < quorum)
+        if not pending:
+            continue
+        # Latest hide action time
+        hide_actions_q = ModerationAction.query.filter(
+            ModerationAction.trx_id == a.trx_id,
+            ModerationAction.action == "hide",
+        )
+        if cutoff is not None:
+            hide_actions_q = hide_actions_q.filter(ModerationAction.created_at > cutoff)
+        latest_hide = hide_actions_q.order_by(
+            ModerationAction.created_at.desc()
+        ).first()
+        latest_ts = latest_hide.created_at if latest_hide else a.created_at
+        if last_seen is None or (latest_ts and latest_ts > last_seen):
+            count += 1
+
+    return jsonify({"count": int(count)})
+
+
+@api_bp.route("/mod/seen", methods=["POST"])
+def api_mod_seen():
+    if "username" not in session:
+        return jsonify({"success": False}), 401
+    uname = session["username"].lower()
+    if uname not in (current_app.config.get("MODERATORS") or []):
+        return jsonify({"success": False}), 403
+    now = _utcnow_naive()
+    state = ModerationState.query.get(uname)
+    if state is None:
+        state = ModerationState(username=uname, last_seen=now)
+        db.session.add(state)
+    else:
+        state.last_seen = now
+    db.session.commit()
+    return jsonify({"success": True, "last_seen": now.isoformat()})

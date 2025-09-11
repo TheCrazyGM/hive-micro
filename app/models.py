@@ -30,6 +30,12 @@ class MentionState(db.Model):
     last_seen = db.Column(db.DateTime, nullable=True, index=True)
 
 
+class ModerationState(db.Model):
+    __tablename__ = "moderation_state"
+    username = db.Column(db.String(32), primary_key=True)
+    last_seen = db.Column(db.DateTime, nullable=True, index=True)
+
+
 class Moderation(db.Model):
     __tablename__ = "moderation"
     # One row per moderated trx_id
