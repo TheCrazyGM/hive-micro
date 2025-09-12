@@ -4,10 +4,19 @@
     <div id="replyNotice" class="alert alert-secondary d-none py-2 px-3 mb-3" role="alert"></div>
     <div id="replyPreview" class="mb-3 d-none"></div>
     <form id="postForm">
-      <div class="mb-1">
-        <textarea class="form-control" id="postContent" rows="3" placeholder="What's on your mind?"
+      <div class="mb-1 d-flex align-items-start gap-2">
+        <div id="typingBee">
+          <img id="typingBeeImg"
+               src="{{ url_for('static', filename='img/right.png') }}"
+               data-static="{{ url_for('static', filename='img/right.png') }}"
+               data-anim="{{ url_for('static', filename='img/animate.gif') }}"
+               alt="Bee"
+               style="height:36px; width:auto;" />
+        </div>
+        <textarea class="form-control flex-grow-1" id="postContent" rows="3" placeholder="What's on your mind?"
                   maxlength="{{ config['CONTENT_MAX_LEN'] }}"></textarea>
       </div>
+
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="addImageBtn">
           <i class="bi bi-image"></i> Add Image

@@ -14,6 +14,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const imageFileInput = document.getElementById('imageFileInput');
   const imageUploadBtn = document.getElementById('imageUploadBtn');
   const imageUploadStatus = document.getElementById('imageUploadStatus');
+  const typingBee = document.getElementById('typingBee');
+  const typingBeeImg = document.getElementById('typingBeeImg');
+  let typingTimeout = null;
 
   function escapeHTML(s) {
     return String(s)
@@ -22,6 +25,14 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+  function setBeeAnimated(animated) {
+    if (!typingBeeImg) return;
+    try {
+      const staticSrc = typingBeeImg.getAttribute('data-static');
+      const animSrc = typingBeeImg.getAttribute('data-anim');
+      typingBeeImg.src = animated ? animSrc : staticSrc;
+    } catch (_) {}
   }
   // --- Image Upload Helpers (images.hive.blog via Keychain) ---
   function setImageStatus(msg, type){
@@ -228,12 +239,26 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
   if (ta) {
-    ta.addEventListener('input', updateCounter);
+    ta.addEventListener('input', function(){
+      updateCounter();
+      const hasText = (ta.value || '').trim().length > 0;
+      if (hasText) {
+        setBeeAnimated(true);
+        if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => setBeeAnimated(false), 800);
+      } else {
+        setBeeAnimated(false);
+      }
+    });
+    ta.addEventListener('blur', function(){ setBeeAnimated(false); });
+    // Ensure static image on load
+    setBeeAnimated(false);
     updateCounter();
   }
 
   postForm.addEventListener("submit", function (e) {
     e.preventDefault();
+    setBeeAnimated(false);
 
     const content = ta.value;
     const username = localStorage.getItem("hive.username");
