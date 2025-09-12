@@ -1,6 +1,6 @@
 <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom fixed-top">
   <div class="container-fluid">
-    <img src="{{ url_for('static', filename='img/micro_bee.png') }}" width="32" alt="Logo" class="navbar-brand">
+    <img src="{{ url_for('static', filename='img/left.png') }}" width="48" alt="Logo" class="navbar-brand">
     <a class="navbar-brand fw-semibold" href="{{ url_for('ui.feed') if session.username else url_for('ui.index') }}">{{ config['APP_ID'] }}</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
             aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
