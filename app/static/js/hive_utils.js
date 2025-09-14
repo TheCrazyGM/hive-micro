@@ -225,7 +225,11 @@
 
       previewDiv.appendChild(header);
       previewDiv.appendChild(contentDiv);
-      el.appendChild(previewDiv);
+      const link = document.createElement('a');
+      link.href = '/p/' + encodeURIComponent(reply_to);
+      link.className = 'text-decoration-none';
+      link.appendChild(previewDiv);
+      el.appendChild(link);
     } catch (e) {
       // Fallback to simple link if fetch fails
       console.warn('Failed to load reply preview:', e);

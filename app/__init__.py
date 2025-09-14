@@ -27,6 +27,9 @@ def create_app():
     # Security settings
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
     app.config.setdefault("SESSION_COOKIE_SECURE", False)
+    # Session persistence settings
+    app.config.setdefault("SESSION_PERMANENT", True)
+    app.config.setdefault("PERMANENT_SESSION_LIFETIME", 2592000)  # 30 days in seconds
     # Allow overriding via environment
     scs = os.environ.get("SESSION_COOKIE_SAMESITE")
     if scs:

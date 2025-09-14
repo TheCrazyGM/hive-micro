@@ -866,6 +866,7 @@ def login():
         return jsonify(invalid_resp), 401
 
     session["username"] = username
+    session.permanent = True
     return jsonify({"success": True, "username": username})
 
 
