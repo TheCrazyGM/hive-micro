@@ -478,19 +478,15 @@ html[data-bs-theme="dark"] .table-responsive .table tbody tr:hover {
   background-color: var(--bs-secondary-bg);
 }
 
-/* Responsive min-width for moderation table */
-.mod-table {
-  min-width: 700px; /* base for very small screens */
+/* Responsive min-width for moderation table
+   Goal: Scrollbar only on smaller viewports when needed. On medium+ screens, fit container. */
+.mod-table { width: 100%; min-width: 0; }
+@media (max-width: 575.98px) { /* xs */
+  .mod-table { min-width: 640px; }
 }
-@media (min-width: 576px) { /* sm */
-  .mod-table { min-width: 800px; }
+@media (min-width: 576px) and (max-width: 767.98px) { /* sm */
+  .mod-table { min-width: 760px; }
 }
-@media (min-width: 768px) { /* md */
-  .mod-table { min-width: 900px; }
-}
-@media (min-width: 992px) { /* lg */
-  .mod-table { min-width: 1000px; }
-}
-@media (min-width: 1200px) { /* xl and up */
-  .mod-table { min-width: 1100px; }
+@media (min-width: 768px) { /* md and up: no enforced min-width */
+  .mod-table { min-width: 0; }
 }
