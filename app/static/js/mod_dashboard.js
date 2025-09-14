@@ -46,7 +46,12 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="text-end">
             <div class="btn-group btn-group-sm">
               <a class="btn btn-outline-secondary" href="/p/${encodeURIComponent(it.trx_id)}">Open</a>
-              ${it.hidden ? `<button class="btn btn-success" data-act="unhide" data-trx="${esc(it.trx_id)}">Unhide</button>` : `<button class="btn btn-danger" data-act="hide" data-trx="${esc(it.trx_id)}">Hide</button>`}
+              ${it.pending ? 
+                `<button class="btn btn-success" data-act="hide" data-trx="${esc(it.trx_id)}">Approve</button><button class="btn btn-danger" data-act="unhide" data-trx="${esc(it.trx_id)}">Reject</button>` :
+                it.hidden ? 
+                  `<button class="btn btn-success" data-act="unhide" data-trx="${esc(it.trx_id)}">Unhide</button>` : 
+                  `<button class="btn btn-danger" data-act="hide" data-trx="${esc(it.trx_id)}">Hide</button>`
+              }
               <button class="btn btn-outline-secondary" data-act="log" data-trx="${esc(it.trx_id)}">Log</button>
             </div>
           </td>`;
