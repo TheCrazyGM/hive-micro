@@ -352,6 +352,7 @@ def _ingest_custom_json_op(
     payload: dict,
     tx_idx: int,
     op_idx: int,
+    trx_id_override: str | None = None,
 ) -> int:
     """Ingest a single custom_json op for our app ID. Returns 1 if inserted, else 0.
 
@@ -393,8 +394,13 @@ def _ingest_custom_json_op(
                 tags = et
         reply_to = body.get("reply_to")
 
-        # We may not have a transaction_id in bulk op view; generate a stable fallback
-        trx_id = payload.get("transaction_id") or f"{block_num}-{tx_idx}-{op_idx}"
+        # Prefer provided transaction id override when available (e.g., from full block)
+        # Fallback to payload value; finally generate a stable synthetic id
+        trx_id = (
+            trx_id_override
+            or payload.get("transaction_id")
+            or f"{block_num}-{tx_idx}-{op_idx}"
+        )
 
         if not Message.query.filter_by(trx_id=trx_id).first():
             m = Message(
@@ -566,6 +572,48 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                 else _utcnow_naive()
                             )
 
+                            # Build a mapping of tx_ids for just this app's custom_json ops in this block
+                            app_tx_ids: list[str] = []
+                            try:
+                                full_blk = hv.rpc.get_block(bn) or {}
+                                f_txs = full_blk.get("transactions", []) or []
+                                for f_tx_idx, f_tx in enumerate(f_txs):
+                                    tx_id_val = f_tx.get("transaction_id")
+                                    # Enumerate ops inside this tx and collect ids for our app ops
+                                    f_ops = f_tx.get("operations", []) or []
+                                    for f_op_idx, f_op in enumerate(f_ops):
+                                        try:
+                                            if (
+                                                not isinstance(f_op, (list, tuple))
+                                                or len(f_op) != 2
+                                            ):
+                                                continue
+                                            f_type, f_payload = f_op
+                                            if f_type != "custom_json":
+                                                continue
+                                            # Normalize payload to dict
+                                            if isinstance(f_payload, str):
+                                                try:
+                                                    f_payload = json.loads(f_payload)
+                                                except Exception:
+                                                    f_payload = {}
+                                            if not isinstance(f_payload, dict):
+                                                continue
+                                            if (
+                                                f_payload.get("id")
+                                                != current_app.config["APP_ID"]
+                                            ):
+                                                continue
+                                            app_tx_ids.append(
+                                                tx_id_val
+                                                or f"{bn}-{f_tx_idx}-{f_op_idx}"
+                                            )
+                                        except Exception:
+                                            continue
+                            except Exception:
+                                # If we cannot fetch or parse full block, leave app_tx_ids empty; fallback will be used
+                                app_tx_ids = []
+
                             # Iterate high-level operations
                             op_counter = 0
                             inserted_this_block = 0
@@ -592,12 +640,19 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         != current_app.config["APP_ID"]
                                     ):
                                         continue
+                                    # Use tx id from full block mapping when available
+                                    trx_id_over = (
+                                        app_tx_ids[op_counter]
+                                        if op_counter < len(app_tx_ids)
+                                        else None
+                                    )
                                     inserted = _ingest_custom_json_op(
                                         block_num=bn,
                                         dt=dt,
                                         payload=payload,
                                         tx_idx=0,
                                         op_idx=op_counter,
+                                        trx_id_override=trx_id_over,
                                     )
                                     if inserted:
                                         # Commit periodically to keep transactions small
