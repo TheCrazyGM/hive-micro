@@ -467,7 +467,7 @@ def _ingest_block(hv: Hive, block_num: int):
     return inserted
 
 
-def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 1.0):
+def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
     """Background watcher loop that ingests blocks.
 
     Accepts a Flask `app` instance to create an application context inside
@@ -511,12 +511,21 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 1.0):
                 if next_block > head:
                     # up-to-date; sleep
                     try:
+                        sleep_single = current_app.config.get(
+                            "WATCHER_SINGLE_SLEEP_SEC", 2.5
+                        )
                         current_app.logger.debug(
-                            "[watcher] up-to-date; sleeping %.2fs", poll_interval
+                            "[watcher] up-to-date; sleeping %.2fs", sleep_single
                         )
                     except Exception:
                         pass
-                    time.sleep(poll_interval)
+                    try:
+                        sleep_single = current_app.config.get(
+                            "WATCHER_SINGLE_SLEEP_SEC", 2.5
+                        )
+                    except Exception:
+                        sleep_single = 2.5
+                    time.sleep(sleep_single)
                     continue
                 backlog = max(0, head - next_block)
                 # If far behind, use bulk mode via nectar.block.Blocks to catch up faster
@@ -649,6 +658,18 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 1.0):
                         _ingest_block(hv, bn)
                         ck.last_block = bn
                     db.session.commit()
+                    # After processing in single mode, sleep close to block interval
+                    try:
+                        sleep_single = current_app.config.get(
+                            "WATCHER_SINGLE_SLEEP_SEC", 2.5
+                        )
+                        current_app.logger.debug(
+                            "[watcher] single mode batch done; sleeping %.2fs",
+                            sleep_single,
+                        )
+                    except Exception:
+                        sleep_single = 2.5
+                    time.sleep(sleep_single)
             except Exception:
                 # Backoff on errors
                 try:

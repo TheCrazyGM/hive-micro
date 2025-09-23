@@ -88,6 +88,11 @@ def create_app():
         "HIVE_MICRO_YOUTUBE_PREVIEW", "0"
     ) in ("1", "true", "yes", "on")
 
+    # Watcher tuning
+    app.config["WATCHER_SINGLE_SLEEP_SEC"] = float(
+        os.environ.get("HIVE_MICRO_SINGLE_SLEEP_SEC", "2.5")
+    )
+
     db.init_app(app)
     cache.init_app(app)
     app.config["APP_ID"] = os.environ.get("HIVE_MICRO_APP_ID", "hive.micro")
