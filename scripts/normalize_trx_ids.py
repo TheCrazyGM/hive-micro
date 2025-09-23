@@ -9,7 +9,7 @@ Usage examples:
   python scripts/normalize_trx_ids.py --limit 500 --batch-size 200
 
 Strategy:
-- Select Message rows whose trx_id looks synthetic: ^\d+-\d+-\d+$ (client-side regex).
+- Select Message rows whose trx_id looks synthetic: r"^\\d+-\\d+-\\d+$" (client-side regex).
 - Group by block_num.
 - For each block, pull ops via hv.rpc.get_ops_in_block(bn, True) and build a map
   of (author, content) -> [transaction_id].
@@ -114,6 +114,8 @@ def normalize_trx_ids(
     limit: Optional[int],
     batch_size: int,
     dry_run: bool,
+    one_trx: Optional[str] = None,
+    verbose: bool = False,
 ) -> Tuple[int, int, int]:
     app = create_app()
     updated = 0
@@ -124,7 +126,11 @@ def normalize_trx_ids(
         hv = _get_hive(app)
         app_id = app.config.get("APP_ID", "hive.micro")
         # broad query then client-side filter to be portable across SQLite/Postgres
-        q = Message.query.filter(Message.trx_id.contains("-"))
+        q = Message.query
+        if one_trx:
+            q = q.filter(Message.trx_id == one_trx)
+        else:
+            q = q.filter(Message.trx_id.contains("-"))
         if start_block is not None:
             q = q.filter(Message.block_num >= start_block)
         if end_block is not None:
@@ -132,7 +138,31 @@ def normalize_trx_ids(
         q = q.order_by(Message.block_num.asc(), Message.id.asc())
         if limit is not None and limit > 0:
             q = q.limit(limit)
-        rows: List[Message] = [r for r in list(q) if SYNTH_TRX_RE.match(r.trx_id or "")]
+        rows_all: List[Message] = list(q)
+        rows: List[Message] = (
+            rows_all
+            if one_trx
+            else [r for r in rows_all if SYNTH_TRX_RE.match(r.trx_id or "")]
+        )
+        if verbose:
+            try:
+                uri = str(app.config.get("SQLALCHEMY_DATABASE_URI", ""))
+                # mask password
+                if "://" in uri and "@" in uri:
+                    scheme, rest = uri.split("://", 1)
+                    creds, host = rest.split("@", 1)
+                    if ":" in creds:
+                        user, _pw = creds.split(":", 1)
+                        uri = f"{scheme}://{user}:***@{host}"
+                app.logger.info(
+                    "[normalize] DB=%s app_id=%s prefilter_rows=%s synthetic_rows=%s",
+                    uri,
+                    app_id,
+                    len(rows_all),
+                    len(rows),
+                )
+            except Exception:
+                pass
         if not rows:
             app.logger.info("[normalize] no synthetic trx_ids found in selected range.")
             return updated, examined, skipped
@@ -208,6 +238,17 @@ def main():
         action="store_true",
         help="Do not write changes; just log what would be updated",
     )
+    ap.add_argument(
+        "--one-trx-id",
+        type=str,
+        default=None,
+        help="Normalize a single specific trx_id (useful for spot fixes like 99684855-12-0)",
+    )
+    ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print diagnostics (DB URI masked, prefilter counts)",
+    )
 
     args = ap.parse_args()
     updated, examined, skipped = normalize_trx_ids(
@@ -216,6 +257,8 @@ def main():
         limit=args.limit,
         batch_size=args.batch_size,
         dry_run=args.dry_run,
+        one_trx=args.one_trx_id,
+        verbose=args.verbose,
     )
     print(
         f"Normalization complete: updated={updated} examined={examined} skipped={skipped} dry_run={args.dry_run}"
