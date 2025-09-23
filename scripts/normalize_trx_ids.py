@@ -62,9 +62,13 @@ def _trx_from(opd: Dict[str, Any]) -> Optional[str]:
 
 def _ops_map_for_block(
     hv: Hive, bn: int, app_id: str
-) -> Dict[Tuple[str, str], List[str]]:
-    """Return mapping of (author, content) -> [trx_ids] for our app's custom_json ops in a block."""
+) -> Tuple[Dict[Tuple[str, str], List[str]], List[str]]:
+    """Return (map, order) for our app's custom_json ops in a block.
+    - map: (author, content) -> [trx_ids]
+    - order: [trx_ids] in the order ops were seen in the block (for index fallback)
+    """
     mp: Dict[Tuple[str, str], List[str]] = {}
+    order: List[str] = []
     raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
     for ro in raw_ops:
         try:
@@ -107,9 +111,10 @@ def _ops_map_for_block(
                 continue
             key = (str(author), content)
             mp.setdefault(key, []).append(txh)
+            order.append(txh)
         except Exception:
             continue
-    return mp
+    return mp, order
 
 
 def normalize_trx_ids(
@@ -179,23 +184,67 @@ def normalize_trx_ids(
         for bn, msgs in by_block.items():
             examined += len(msgs)
             try:
-                mp = _ops_map_for_block(hv, bn, app_id)
-                if not mp:
+                mp, order_tx = _ops_map_for_block(hv, bn, app_id)
+                if not mp and not order_tx:
                     skipped += len(msgs)
                     continue
+                used: set[str] = set()
                 for m in msgs:
                     key = (m.author, (m.content or "").strip())
+                    # primary: content-based
+                    real_trx: Optional[str] = None
                     cand = mp.get(key) or []
-                    if not cand:
+                    while cand and (cand[0] in used):
+                        cand.pop(0)
+                    if cand:
+                        real_trx = cand.pop(0)
+                    # fallback: index-aligned order across app ops in this block
+                    if real_trx is None and INDEX_FALLBACK:
+                        while order_tx and (order_tx[0] in used):
+                            order_tx.pop(0)
+                        if order_tx:
+                            real_trx = order_tx.pop(0)
+                            if verbose:
+                                try:
+                                    app.logger.info(
+                                        "[normalize] fallback(index) block=%s id=%s assigned_tx=%s",
+                                        bn,
+                                        m.id,
+                                        real_trx,
+                                    )
+                                except Exception:
+                                    pass
+                    if not real_trx:
+                        if verbose:
+                            try:
+                                app.logger.info(
+                                    "[normalize] skip(no-match) block=%s id=%s key=%s",
+                                    bn,
+                                    m.id,
+                                    key,
+                                )
+                            except Exception:
+                                pass
                         skipped += 1
                         continue
-                    real_trx = cand.pop(0)
                     # uniqueness guard
                     existing = Message.query.filter(Message.trx_id == real_trx).first()
                     if existing and existing.id != m.id:
+                        if verbose:
+                            try:
+                                app.logger.info(
+                                    "[normalize] skip(dup) block=%s id=%s candidate=%s existing_id=%s",
+                                    bn,
+                                    m.id,
+                                    real_trx,
+                                    existing.id,
+                                )
+                            except Exception:
+                                pass
                         skipped += 1
                         continue
                     if m.trx_id == real_trx:
+                        used.add(real_trx)
                         skipped += 1
                         continue
                     app.logger.info(
@@ -209,6 +258,7 @@ def normalize_trx_ids(
                         m.trx_id = real_trx
                         db.session.add(m)
                         updated += 1
+                        used.add(real_trx)
                         if updated % batch_size == 0:
                             db.session.commit()
                 if not dry_run:
@@ -253,8 +303,17 @@ def main():
         action="store_true",
         help="Print diagnostics (DB URI masked, prefilter counts)",
     )
+    ap.add_argument(
+        "--index-fallback",
+        action="store_true",
+        help="When content match fails, fall back to assigning by app-op order in the block",
+    )
 
     args = ap.parse_args()
+    # Expose index-fallback via a module-level flag to keep function signature simple for internal calls
+    global INDEX_FALLBACK
+    INDEX_FALLBACK = args.index_fallback
+
     updated, examined, skipped = normalize_trx_ids(
         start_block=args.start_block,
         end_block=args.end_block,
