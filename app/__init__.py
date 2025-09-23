@@ -1,6 +1,7 @@
 import atexit
 import os
 import secrets
+import logging
 from datetime import datetime
 
 from flask import Flask, abort, request, session, render_template
@@ -67,6 +68,20 @@ def create_app():
     app.config["MOD_REQUIRE_SIGNATURE"] = os.environ.get(
         "HIVE_MICRO_MOD_REQUIRE_SIG", "0"
     ) in ("1", "true", "yes", "on")
+
+    # Logging level configuration
+    level_name = os.environ.get("HIVE_MICRO_LOG_LEVEL", "INFO").upper().strip()
+    level = getattr(logging, level_name, logging.INFO)
+    if not isinstance(level, int):
+        level = logging.INFO
+    try:
+        app.logger.setLevel(level)
+        # Align common related loggers
+        logging.getLogger("werkzeug").setLevel(level)
+        logging.getLogger("nectar").setLevel(level)
+        app.logger.info("[config] log level set to %s", logging.getLevelName(level))
+    except Exception:
+        pass
 
     # Feature flags
     app.config["YOUTUBE_PREVIEW"] = os.environ.get(

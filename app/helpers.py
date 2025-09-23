@@ -9,6 +9,7 @@ from flask import current_app, jsonify, request
 from markdown import markdown
 from nectar.account import Account
 from nectar.hive import Hive
+from nectar.block import Blocks
 from nectargraphenebase.account import PublicKey
 from nectargraphenebase.ecdsasig import verify_message
 
@@ -230,9 +231,23 @@ def markdown_render(content: str) -> str:
 def _get_hive_instance():
     """Return a Hive instance (uses shared instance if configured)."""
     try:
-        return Hive(node=current_app.config["HIVE_NODES"])
+        hv = Hive(node=current_app.config["HIVE_NODES"])
+        try:
+            current_app.logger.info(
+                "[watcher] initialized Hive instance with custom nodes: %s",
+                current_app.config.get("HIVE_NODES"),
+            )
+        except Exception:
+            pass
+        return hv
     except Exception:
         # Fallback: reuse earlier hv if available via shared instance
+        try:
+            current_app.logger.warning(
+                "[watcher] failed to init Hive with custom nodes, falling back to default shared instance"
+            )
+        except Exception:
+            pass
         return Hive()
 
 
@@ -331,6 +346,86 @@ def _extract_mentions_tags(content: str) -> tuple[list[str], list[str]]:
         return [], []
 
 
+def _ingest_custom_json_op(
+    block_num: int,
+    dt: datetime,
+    payload: dict,
+    tx_idx: int,
+    op_idx: int,
+) -> int:
+    """Ingest a single custom_json op for our app ID. Returns 1 if inserted, else 0.
+
+    This mirrors the logic inside _ingest_block() so bulk and single-block paths stay consistent.
+    """
+    try:
+        # Determine author from required posting auths
+        rpa = payload.get("required_posting_auths", []) or []
+        ra = payload.get("required_auths", []) or []
+        author = rpa[0] if rpa else (ra[0] if ra else None)
+        if not author:
+            return 0
+
+        # Parse json payload (string or dict)
+        body = payload.get("json")
+        if isinstance(body, str):
+            try:
+                body = json.loads(body)
+            except Exception:
+                return 0
+        if not isinstance(body, dict):
+            return 0
+        if body.get("type") != "post":
+            # v1 implements only posts; ignore others
+            return 0
+
+        content = body.get("content", "").strip()
+        if not content:
+            return 0
+
+        # Mentions/tags: derive from content when not provided
+        mentions = body.get("mentions") or []
+        tags = body.get("tags") or []
+        if not mentions or not tags:
+            em, et = _extract_mentions_tags(content)
+            if not mentions:
+                mentions = em
+            if not tags:
+                tags = et
+        reply_to = body.get("reply_to")
+
+        # We may not have a transaction_id in bulk op view; generate a stable fallback
+        trx_id = payload.get("transaction_id") or f"{block_num}-{tx_idx}-{op_idx}"
+
+        if not Message.query.filter_by(trx_id=trx_id).first():
+            m = Message(
+                trx_id=trx_id,
+                block_num=block_num,
+                timestamp=dt,
+                author=author,
+                type="post",
+                content=content,
+                mentions=json.dumps(mentions) if mentions else None,
+                tags=json.dumps(tags) if tags else None,
+                reply_to=reply_to,
+                raw_json=json.dumps(body),
+            )
+            db.session.add(m)
+            return 1
+        return 0
+    except Exception as e:
+        try:
+            current_app.logger.exception(
+                "[ingest] exception while ingesting custom_json op at block=%s tx=%s op=%s: %s",
+                block_num,
+                tx_idx,
+                op_idx,
+                e,
+            )
+        except Exception:
+            pass
+        return 0
+
+
 def _ingest_block(hv: Hive, block_num: int):
     blk = hv.rpc.get_block(block_num)
     if not blk:
@@ -351,60 +446,23 @@ def _ingest_block(hv: Hive, block_num: int):
                     continue
                 if payload.get("id") != current_app.config["APP_ID"]:
                     continue
-                # Determine author from required posting auths
-                rpa = payload.get("required_posting_auths", []) or []
-                ra = payload.get("required_auths", []) or []
-                author = rpa[0] if rpa else (ra[0] if ra else None)
-                if not author:
-                    continue
-                # Parse json payload (string or dict)
-                body = payload.get("json")
-                if isinstance(body, str):
-                    try:
-                        body = json.loads(body)
-                    except Exception:
-                        continue
-                if not isinstance(body, dict):
-                    continue
-                if body.get("type") != "post":
-                    # v1 implements only posts; ignore others
-                    continue
-                content = body.get("content", "").strip()
-                if not content:
-                    continue
-                # Mentions/tags: derive from content when not provided
-                mentions = body.get("mentions") or []
-                tags = body.get("tags") or []
-                if not mentions or not tags:
-                    em, et = _extract_mentions_tags(content)
-                    if not mentions:
-                        mentions = em
-                    if not tags:
-                        tags = et
-                reply_to = body.get("reply_to")
-                # trx_id may not be present on tx; generate stable fallback
-                trx_id = tx.get("transaction_id") or f"{block_num}-{tx_idx}-{op_idx}"
-
-                # Upsert by trx_id
-                if not Message.query.filter_by(trx_id=trx_id).first():
-                    m = Message(
-                        trx_id=trx_id,
-                        block_num=block_num,
-                        timestamp=dt,
-                        author=author,
-                        type="post",
-                        content=content,
-                        mentions=json.dumps(mentions) if mentions else None,
-                        tags=json.dumps(tags) if tags else None,
-                        reply_to=reply_to,
-                        raw_json=json.dumps(body),
-                    )
-                    db.session.add(m)
-                    inserted += 1
+                inserted += _ingest_custom_json_op(
+                    block_num=block_num,
+                    dt=dt,
+                    payload=payload,
+                    tx_idx=tx_idx,
+                    op_idx=op_idx,
+                )
             except Exception:
                 # Skip malformed ops but continue
                 continue
     if inserted:
+        try:
+            current_app.logger.debug(
+                "[ingest] block=%s inserted_ops=%s", block_num, inserted
+            )
+        except Exception:
+            pass
         db.session.commit()
     return inserted
 
@@ -427,6 +485,12 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 1.0):
             ck = Checkpoint(id=1, last_block=0)
             db.session.add(ck)
             db.session.commit()
+        try:
+            current_app.logger.info(
+                "[watcher] loop started (poll_interval=%.2fs)", poll_interval
+            )
+        except Exception:
+            pass
         while not stop_event.is_set():
             try:
                 head = _get_head_block_num(hv) or 0
@@ -435,18 +499,162 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 1.0):
                     if ck.last_block
                     else (head - 20 if head > 20 else 1)
                 )
+                try:
+                    current_app.logger.debug(
+                        "[watcher] head=%s next=%s (delta=%s)",
+                        head,
+                        next_block,
+                        max(0, head - next_block),
+                    )
+                except Exception:
+                    pass
                 if next_block > head:
                     # up-to-date; sleep
+                    try:
+                        current_app.logger.debug(
+                            "[watcher] up-to-date; sleeping %.2fs", poll_interval
+                        )
+                    except Exception:
+                        pass
                     time.sleep(poll_interval)
                     continue
-                # Process a small batch to avoid long transactions
-                batch_end = min(head, next_block + 50)
-                for bn in range(next_block, batch_end + 1):
-                    _ingest_block(hv, bn)
-                    ck.last_block = bn
-                db.session.commit()
+                backlog = max(0, head - next_block)
+                # If far behind, use bulk mode via nectar.block.Blocks to catch up faster
+                if backlog >= 300:
+                    # Tuneable sizes
+                    bulk_batch = min(1000, backlog + 1)
+                    try:
+                        current_app.logger.info(
+                            "[watcher] bulk mode ON: backlog=%s start=%s batch=%s",
+                            backlog,
+                            next_block,
+                            bulk_batch,
+                        )
+                    except Exception:
+                        pass
+                    # Blocks(start, limit, only_ops=True, ops=[...])
+                    try:
+                        blocks_iter = Blocks(
+                            next_block,
+                            bulk_batch,
+                            only_ops=True,
+                            ops=["custom_json_operation", "custom_json"],
+                            blockchain_instance=hv,
+                        )
+                        processed_blocks = 0
+                        total_inserted = 0
+                        for blk in blocks_iter:
+                            bn = getattr(blk, "block_num", None) or blk.get("block_num")
+                            # Timestamp may be present on blk dict-like
+                            ts = None
+                            try:
+                                ts = blk["timestamp"]
+                            except Exception:
+                                ts = getattr(blk, "timestamp", None)
+                            dt = (
+                                _parse_timestamp(ts)
+                                if isinstance(ts, str)
+                                else _utcnow_naive()
+                            )
+
+                            # Iterate high-level operations
+                            op_counter = 0
+                            inserted_this_block = 0
+                            for op in getattr(blk, "operations", []):
+                                try:
+                                    # Expect dict format {"type": ..., "value": {...}}
+                                    optype = (
+                                        op.get("type") if isinstance(op, dict) else None
+                                    )
+                                    payload = (
+                                        op.get("value")
+                                        if isinstance(op, dict)
+                                        else None
+                                    )
+                                    if not payload:
+                                        continue
+                                    if optype not in (
+                                        "custom_json_operation",
+                                        "custom_json",
+                                    ):
+                                        continue
+                                    if (
+                                        payload.get("id")
+                                        != current_app.config["APP_ID"]
+                                    ):
+                                        continue
+                                    inserted = _ingest_custom_json_op(
+                                        block_num=bn,
+                                        dt=dt,
+                                        payload=payload,
+                                        tx_idx=0,
+                                        op_idx=op_counter,
+                                    )
+                                    if inserted:
+                                        # Commit periodically to keep transactions small
+                                        if op_counter % 200 == 0:
+                                            db.session.commit()
+                                        inserted_this_block += inserted
+                                    op_counter += 1
+                                except Exception:
+                                    continue
+                            ck.last_block = bn
+                            processed_blocks += 1
+                            total_inserted += inserted_this_block
+                            try:
+                                current_app.logger.debug(
+                                    "[watcher] bulk block=%s ops=%s",
+                                    bn,
+                                    inserted_this_block,
+                                )
+                            except Exception:
+                                pass
+                            # Commit at end of each block in bulk mode
+                            db.session.commit()
+                        try:
+                            current_app.logger.info(
+                                "[watcher] bulk mode processed blocks=%s inserted_ops=%s; last_block=%s",
+                                processed_blocks,
+                                total_inserted,
+                                ck.last_block,
+                            )
+                        except Exception:
+                            pass
+                    except Exception:
+                        # Fallback to single-block mode on errors
+                        try:
+                            current_app.logger.exception(
+                                "[watcher] bulk mode error; falling back to single-block mode"
+                            )
+                        except Exception:
+                            pass
+                        batch_end = min(head, next_block + 50)
+                        for bn in range(next_block, batch_end + 1):
+                            _ingest_block(hv, bn)
+                            ck.last_block = bn
+                        db.session.commit()
+                else:
+                    # Process a small batch to avoid long transactions
+                    try:
+                        current_app.logger.debug(
+                            "[watcher] single mode: next=%s to %s (head=%s)",
+                            next_block,
+                            min(head, next_block + 50),
+                            head,
+                        )
+                    except Exception:
+                        pass
+                    batch_end = min(head, next_block + 50)
+                    for bn in range(next_block, batch_end + 1):
+                        _ingest_block(hv, bn)
+                        ck.last_block = bn
+                    db.session.commit()
             except Exception:
                 # Backoff on errors
+                try:
+                    current_app.logger.exception("[watcher] error in loop; backing off")
+                except Exception:
+                    pass
                 time.sleep(2.0)
             finally:
                 # brief pause between batches
