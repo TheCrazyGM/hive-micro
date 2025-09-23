@@ -117,6 +117,18 @@ def _ops_map_for_block(
     return mp, order
 
 
+def _decode_synthetic(trx_id: str) -> Optional[Tuple[int, int, int]]:
+    """Parse a synthetic trx id like '99684855-12-0' -> (block_num, tx_idx, op_idx)."""
+    try:
+        parts = str(trx_id).split("-")
+        if len(parts) != 3:
+            return None
+        bn, txi, opi = int(parts[0]), int(parts[1]), int(parts[2])
+        return bn, txi, opi
+    except Exception:
+        return None
+
+
 def normalize_trx_ids(
     start_block: Optional[int],
     end_block: Optional[int],
@@ -186,6 +198,15 @@ def normalize_trx_ids(
             try:
                 mp, order_tx = _ops_map_for_block(hv, bn, app_id)
                 if not mp and not order_tx:
+                    if verbose:
+                        try:
+                            app.logger.info(
+                                "[normalize] block=%s no app ops found via get_ops_in_block; skipping %s msgs",
+                                bn,
+                                len(msgs),
+                            )
+                        except Exception:
+                            pass
                     skipped += len(msgs)
                     continue
                 used: set[str] = set()
@@ -215,18 +236,43 @@ def normalize_trx_ids(
                                 except Exception:
                                     pass
                     if not real_trx:
-                        if verbose:
-                            try:
-                                app.logger.info(
-                                    "[normalize] skip(no-match) block=%s id=%s key=%s",
-                                    bn,
-                                    m.id,
-                                    key,
-                                )
-                            except Exception:
-                                pass
-                        skipped += 1
-                        continue
+                        # Optional targeted fallback: decode synthetic id and fetch transaction_id by index
+                        if SYNTHETIC_FALLBACK and SYNTH_TRX_RE.match(m.trx_id or ""):
+                            dec = _decode_synthetic(m.trx_id)
+                            if dec and dec[0] == bn:
+                                try:
+                                    full_blk = hv.rpc.get_block(bn) or {}
+                                    txs = full_blk.get("transactions", []) or []
+                                    if 0 <= dec[1] < len(txs):
+                                        tx = txs[dec[1]]
+                                        real_trx = tx.get("transaction_id")
+                                        if verbose and real_trx:
+                                            try:
+                                                app.logger.info(
+                                                    "[normalize] fallback(synthetic) block=%s id=%s tx_idx=%s op_idx=%s -> %s",
+                                                    bn,
+                                                    m.id,
+                                                    dec[1],
+                                                    dec[2],
+                                                    real_trx,
+                                                )
+                                            except Exception:
+                                                pass
+                                except Exception:
+                                    pass
+                        if not real_trx:
+                            if verbose:
+                                try:
+                                    app.logger.info(
+                                        "[normalize] skip(no-match) block=%s id=%s key=%s",
+                                        bn,
+                                        m.id,
+                                        key,
+                                    )
+                                except Exception:
+                                    pass
+                            skipped += 1
+                            continue
                     # uniqueness guard
                     existing = Message.query.filter(Message.trx_id == real_trx).first()
                     if existing and existing.id != m.id:
@@ -308,11 +354,18 @@ def main():
         action="store_true",
         help="When content match fails, fall back to assigning by app-op order in the block",
     )
+    ap.add_argument(
+        "--synthetic-fallback",
+        action="store_true",
+        help="When no match, decode synthetic id (block-tx-op) and fetch transaction_id from full block",
+    )
 
     args = ap.parse_args()
     # Expose index-fallback via a module-level flag to keep function signature simple for internal calls
     global INDEX_FALLBACK
     INDEX_FALLBACK = args.index_fallback
+    global SYNTHETIC_FALLBACK
+    SYNTHETIC_FALLBACK = args.synthetic_fallback
 
     updated, examined, skipped = normalize_trx_ids(
         start_block=args.start_block,
