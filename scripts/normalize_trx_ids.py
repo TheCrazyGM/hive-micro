@@ -197,19 +197,18 @@ def normalize_trx_ids(
             examined += len(msgs)
             try:
                 mp, order_tx = _ops_map_for_block(hv, bn, app_id)
-                if not mp and not order_tx:
-                    if verbose:
-                        try:
-                            app.logger.info(
-                                "[normalize] block=%s no app ops found via get_ops_in_block; skipping %s msgs",
-                                bn,
-                                len(msgs),
-                            )
-                        except Exception:
-                            pass
-                    skipped += len(msgs)
-                    continue
+                if not mp and not order_tx and verbose:
+                    try:
+                        app.logger.info(
+                            "[normalize] block=%s no app ops found via get_ops_in_block; attempting fallbacks for %s msgs",
+                            bn,
+                            len(msgs),
+                        )
+                    except Exception:
+                        pass
                 used: set[str] = set()
+                full_blk_cache = None
+                full_blk_txs = None
                 for m in msgs:
                     key = (m.author, (m.content or "").strip())
                     # primary: content-based
@@ -241,10 +240,14 @@ def normalize_trx_ids(
                             dec = _decode_synthetic(m.trx_id)
                             if dec and dec[0] == bn:
                                 try:
-                                    full_blk = hv.rpc.get_block(bn) or {}
-                                    txs = full_blk.get("transactions", []) or []
-                                    if 0 <= dec[1] < len(txs):
-                                        tx = txs[dec[1]]
+                                    if full_blk_cache is None:
+                                        full_blk_cache = hv.rpc.get_block(bn) or {}
+                                        full_blk_txs = (
+                                            full_blk_cache.get("transactions", []) or []
+                                        )
+                                    txs_local = full_blk_txs or []
+                                    if 0 <= dec[1] < len(txs_local):
+                                        tx = txs_local[dec[1]]
                                         real_trx = tx.get("transaction_id")
                                         if verbose and real_trx:
                                             try:
