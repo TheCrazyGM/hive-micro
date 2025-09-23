@@ -34,11 +34,15 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from nectar.hive import Hive
+from dotenv import load_dotenv
 
 from app import create_app
 from app.models import db, Message
 
 SYNTH_TRX_RE = re.compile(r"^\d+-\d+-\d+$")
+
+# Load environment variables from a .env file if present (e.g., DATABASE_URL, APP_ID)
+load_dotenv()
 
 
 def _get_hive(app) -> Hive:
