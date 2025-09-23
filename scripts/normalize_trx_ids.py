@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """
 Normalize synthetic trx_ids (e.g., "99684855-12-0") in the messages table to
-real transaction hashes by reconciling with full block data from Hive.
+real transaction hashes by reconciling with chain data.
 
 Usage examples:
   python scripts/normalize_trx_ids.py --dry-run
   python scripts/normalize_trx_ids.py --start-block 99000000 --end-block 99700000
-  python scripts/normalize_trx_ids.py --limit 500
+  python scripts/normalize_trx_ids.py --limit 500 --batch-size 200
 
 Strategy:
-- Select Message rows whose trx_id matches the synthetic pattern: ^\d+-\d+-\d+$
+- Select Message rows whose trx_id looks synthetic: ^\d+-\d+-\d+$ (client-side regex).
 - Group by block_num.
-- For each block, fetch the full block via nectar Hive RPC and enumerate all
-  custom_json ops with id == APP_ID. Derive author and content from payload.
-- Match DB rows to chain ops by (author, content). Update DB trx_id to the real
-  transaction id if unique and not used by another row.
-- Commit in small batches, log progress. Dry-run supported.
+- For each block, pull ops via hv.rpc.get_ops_in_block(bn, True) and build a map
+  of (author, content) -> [transaction_id].
+- For each message in that block, match by (author, content) and update trx_id
+  when a unique candidate exists and does not violate the unique constraint.
+- Commit in small batches; support --dry-run.
 
-Notes:
-- Requires app environment to be configured via env vars. Uses create_app().
-- If a matching candidate cannot be found, the row is skipped.
-- If a duplicate trx_id would be created, the row is skipped (unique constraint).
+Requires app environment (DB, nodes) via create_app().
 """
 
 from __future__ import annotations
@@ -31,16 +28,15 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+# Allow running from repo root
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 from nectar.hive import Hive
 
-# Ensure imports resolve whether run from repo root or scripts/
-if __name__ == "__main__":
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-from app import create_app  # noqa: E402
-from app.models import db, Message  # noqa: E402
+from app import create_app
+from app.models import db, Message
 
 SYNTH_TRX_RE = re.compile(r"^\d+-\d+-\d+$")
 
@@ -52,61 +48,64 @@ def _get_hive(app) -> Hive:
         return Hive()
 
 
-def _extract_ops_for_app(
-    full_block: Dict[str, Any], app_id: str
-) -> List[Dict[str, Any]]:
-    """Return list of ops with fields: {trx_id, author, content} for our app."""
-    results: List[Dict[str, Any]] = []
-    txs = full_block.get("transactions", []) or []
-    for tx in txs:
-        trx_id = tx.get("transaction_id")
-        for op in tx.get("operations", []) or []:
-            try:
-                if not isinstance(op, (list, tuple)) or len(op) != 2:
-                    continue
-                op_type, payload = op
-                if op_type != "custom_json":
-                    continue
-                # Normalize payload
-                if isinstance(payload, str):
-                    try:
-                        payload = json.loads(payload)
-                    except Exception:
-                        payload = {}
-                if not isinstance(payload, dict):
-                    continue
-                if payload.get("id") != app_id:
-                    continue
-                # Author
-                rpa = payload.get("required_posting_auths", []) or []
-                ra = payload.get("required_auths", []) or []
-                author = rpa[0] if rpa else (ra[0] if ra else None)
-                if not author:
-                    continue
-                # Body
-                body = payload.get("json")
-                if isinstance(body, str):
-                    try:
-                        body = json.loads(body)
-                    except Exception:
-                        body = None
-                if not isinstance(body, dict):
-                    continue
-                if body.get("type") != "post":
-                    continue
-                content = (body.get("content") or "").strip()
-                if not content:
-                    continue
-                results.append(
-                    {
-                        "trx_id": trx_id,
-                        "author": author,
-                        "content": content,
-                    }
-                )
-            except Exception:
+def _trx_from(opd: Dict[str, Any]) -> Optional[str]:
+    for k in ("transaction_id", "trx_id", "trxId"):
+        v = opd.get(k)
+        if v:
+            return str(v)
+    return None
+
+
+def _ops_map_for_block(
+    hv: Hive, bn: int, app_id: str
+) -> Dict[Tuple[str, str], List[str]]:
+    """Return mapping of (author, content) -> [trx_ids] for our app's custom_json ops in a block."""
+    mp: Dict[Tuple[str, str], List[str]] = {}
+    raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
+    for ro in raw_ops:
+        try:
+            op_pair = ro.get("op") if isinstance(ro, dict) else None
+            if not isinstance(op_pair, (list, tuple)) or len(op_pair) != 2:
                 continue
-    return results
+            t, pl = op_pair
+            if t != "custom_json":
+                continue
+            # normalize payload
+            if isinstance(pl, str):
+                try:
+                    pl = json.loads(pl)
+                except Exception:
+                    pl = {}
+            if not isinstance(pl, dict):
+                continue
+            if pl.get("id") != app_id:
+                continue
+            # author
+            rpa = pl.get("required_posting_auths", []) or []
+            ra = pl.get("required_auths", []) or []
+            author = rpa[0] if rpa else (ra[0] if ra else None)
+            if not author:
+                continue
+            # content
+            body = pl.get("json")
+            if isinstance(body, str):
+                try:
+                    body = json.loads(body)
+                except Exception:
+                    body = None
+            if not isinstance(body, dict) or body.get("type") != "post":
+                continue
+            content = (body.get("content") or "").strip()
+            if not content:
+                continue
+            txh = _trx_from(ro)
+            if not txh:
+                continue
+            key = (str(author), content)
+            mp.setdefault(key, []).append(txh)
+        except Exception:
+            continue
+    return mp
 
 
 def normalize_trx_ids(
@@ -124,63 +123,40 @@ def normalize_trx_ids(
     with app.app_context():
         hv = _get_hive(app)
         app_id = app.config.get("APP_ID", "hive.micro")
-        # Portable selection: SQLite lacks REGEXP by default. Filter by '-' and then validate via regex in Python.
+        # broad query then client-side filter to be portable across SQLite/Postgres
         q = Message.query.filter(Message.trx_id.contains("-"))
         if start_block is not None:
             q = q.filter(Message.block_num >= start_block)
         if end_block is not None:
             q = q.filter(Message.block_num <= end_block)
-        # Order by block_num ascending for stable processing
         q = q.order_by(Message.block_num.asc(), Message.id.asc())
         if limit is not None and limit > 0:
             q = q.limit(limit)
-
-        # Fetch rows and group by block
-        # Pull rows and filter synthetic ids via regex client-side
         rows: List[Message] = [r for r in list(q) if SYNTH_TRX_RE.match(r.trx_id or "")]
         if not rows:
             app.logger.info("[normalize] no synthetic trx_ids found in selected range.")
             return updated, examined, skipped
 
-        # Group rows by block_num
+        # group by block
         by_block: Dict[int, List[Message]] = {}
         for r in rows:
             by_block.setdefault(r.block_num, []).append(r)
 
-        for block_num, msgs in by_block.items():
+        for bn, msgs in by_block.items():
             examined += len(msgs)
             try:
-                full_blk = hv.rpc.get_block(block_num) or {}
-                ops = _extract_ops_for_app(full_blk, app_id)
-                if not ops:
-                    app.logger.debug(
-                        "[normalize] block=%s has no matching ops; skipping %s msgs",
-                        block_num,
-                        len(msgs),
-                    )
+                mp = _ops_map_for_block(hv, bn, app_id)
+                if not mp:
                     skipped += len(msgs)
                     continue
-                # Build candidates by (author, content) -> list of trx_ids (in order)
-                from collections import defaultdict
-
-                cand: Dict[Tuple[str, str], List[str]] = defaultdict(list)
-                for o in ops:
-                    if not o.get("trx_id"):
-                        # Fallback shouldn't generally happen, but keep safe
-                        continue
-                    k = (o["author"], o["content"])
-                    cand[k].append(o["trx_id"])
-
-                # Iterate messages and update when an exact match exists
                 for m in msgs:
                     key = (m.author, (m.content or "").strip())
-                    tx_list = cand.get(key) or []
-                    if not tx_list:
+                    cand = mp.get(key) or []
+                    if not cand:
                         skipped += 1
                         continue
-                    # If multiple candidates, pop one deterministically (FIFO)
-                    real_trx = tx_list.pop(0)
-                    # Uniqueness guard: skip if another row already has this trx_id
+                    real_trx = cand.pop(0)
+                    # uniqueness guard
                     existing = Message.query.filter(Message.trx_id == real_trx).first()
                     if existing and existing.id != m.id:
                         skipped += 1
@@ -190,7 +166,7 @@ def normalize_trx_ids(
                         continue
                     app.logger.info(
                         "[normalize] block=%s id=%s: %s -> %s",
-                        block_num,
+                        bn,
                         m.id,
                         m.trx_id,
                         real_trx,
@@ -204,9 +180,7 @@ def normalize_trx_ids(
                 if not dry_run:
                     db.session.commit()
             except Exception:
-                app.logger.exception(
-                    "[normalize] error while processing block=%s", block_num
-                )
+                app.logger.exception("[normalize] error while processing block=%s", bn)
                 db.session.rollback()
                 continue
 
@@ -214,28 +188,28 @@ def normalize_trx_ids(
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(
         description="Normalize synthetic trx_ids to real transaction hashes"
     )
-    parser.add_argument(
+    ap.add_argument(
         "--start-block", type=int, default=None, help="Start block number (inclusive)"
     )
-    parser.add_argument(
+    ap.add_argument(
         "--end-block", type=int, default=None, help="End block number (inclusive)"
     )
-    parser.add_argument(
+    ap.add_argument(
         "--limit", type=int, default=None, help="Max number of rows to process"
     )
-    parser.add_argument(
+    ap.add_argument(
         "--batch-size", type=int, default=200, help="Commit after this many updates"
     )
-    parser.add_argument(
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="Do not write changes; just log what would be updated",
     )
 
-    args = parser.parse_args()
+    args = ap.parse_args()
     updated, examined, skipped = normalize_trx_ids(
         start_block=args.start_block,
         end_block=args.end_block,

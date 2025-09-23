@@ -572,46 +572,85 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                 else _utcnow_naive()
                             )
 
-                            # Build a mapping of tx_ids for just this app's custom_json ops in this block
+                            # Build tx-id mapping using get_ops_in_block (more efficient than full block),
+                            # primary map by (author, content) -> [trx_ids], and also an ordered list fallback.
+                            app_map: dict[tuple[str, str], list[str]] = {}
                             app_tx_ids: list[str] = []
                             try:
-                                full_blk = hv.rpc.get_block(bn) or {}
-                                f_txs = full_blk.get("transactions", []) or []
-                                for f_tx_idx, f_tx in enumerate(f_txs):
-                                    tx_id_val = f_tx.get("transaction_id")
-                                    # Enumerate ops inside this tx and collect ids for our app ops
-                                    f_ops = f_tx.get("operations", []) or []
-                                    for f_op_idx, f_op in enumerate(f_ops):
-                                        try:
-                                            if (
-                                                not isinstance(f_op, (list, tuple))
-                                                or len(f_op) != 2
-                                            ):
-                                                continue
-                                            f_type, f_payload = f_op
-                                            if f_type != "custom_json":
-                                                continue
-                                            # Normalize payload to dict
-                                            if isinstance(f_payload, str):
-                                                try:
-                                                    f_payload = json.loads(f_payload)
-                                                except Exception:
-                                                    f_payload = {}
-                                            if not isinstance(f_payload, dict):
-                                                continue
-                                            if (
-                                                f_payload.get("id")
-                                                != current_app.config["APP_ID"]
-                                            ):
-                                                continue
-                                            app_tx_ids.append(
-                                                tx_id_val
-                                                or f"{bn}-{f_tx_idx}-{f_op_idx}"
-                                            )
-                                        except Exception:
+                                raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
+
+                                # raw_ops items are dicts; trx id key may vary between nodes/clients
+                                def _trx_from(opd: dict) -> str | None:
+                                    for k in ("transaction_id", "trx_id", "trxId"):
+                                        v = opd.get(k)
+                                        if v:
+                                            return str(v)
+                                    return None
+
+                                for ro in raw_ops:
+                                    try:
+                                        # Expect e.g., {"op": ["custom_json", payload], ...}
+                                        op_pair = (
+                                            ro.get("op")
+                                            if isinstance(ro, dict)
+                                            else None
+                                        )
+                                        if (
+                                            not isinstance(op_pair, (list, tuple))
+                                            or len(op_pair) != 2
+                                        ):
                                             continue
+                                        f_type, f_payload = op_pair
+                                        if f_type != "custom_json":
+                                            continue
+                                        if isinstance(f_payload, str):
+                                            try:
+                                                f_payload = json.loads(f_payload)
+                                            except Exception:
+                                                f_payload = {}
+                                        if not isinstance(f_payload, dict):
+                                            continue
+                                        if (
+                                            f_payload.get("id")
+                                            != current_app.config["APP_ID"]
+                                        ):
+                                            continue
+                                        # Author
+                                        rpa = (
+                                            f_payload.get("required_posting_auths", [])
+                                            or []
+                                        )
+                                        ra = f_payload.get("required_auths", []) or []
+                                        fauthor = (
+                                            rpa[0] if rpa else (ra[0] if ra else None)
+                                        )
+                                        if not fauthor:
+                                            continue
+                                        # Content
+                                        fbody = f_payload.get("json")
+                                        if isinstance(fbody, str):
+                                            try:
+                                                fbody = json.loads(fbody)
+                                            except Exception:
+                                                fbody = None
+                                        if (
+                                            not isinstance(fbody, dict)
+                                            or fbody.get("type") != "post"
+                                        ):
+                                            continue
+                                        fcontent = (fbody.get("content") or "").strip()
+                                        if not fcontent:
+                                            continue
+                                        txh = _trx_from(ro)
+                                        sid = txh or f"{bn}-gs-{len(app_tx_ids)}"
+                                        app_tx_ids.append(sid)
+                                        key = (str(fauthor), fcontent)
+                                        app_map.setdefault(key, []).append(sid)
+                                    except Exception:
+                                        continue
                             except Exception:
-                                # If we cannot fetch or parse full block, leave app_tx_ids empty; fallback will be used
+                                # Leave maps empty; fallback will be used
+                                app_map = {}
                                 app_tx_ids = []
 
                             # Iterate high-level operations
@@ -640,12 +679,35 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         != current_app.config["APP_ID"]
                                     ):
                                         continue
-                                    # Use tx id from full block mapping when available
-                                    trx_id_over = (
-                                        app_tx_ids[op_counter]
-                                        if op_counter < len(app_tx_ids)
-                                        else None
+                                    # Compute mapping key for preferred match (author, content)
+                                    rpa = (
+                                        payload.get("required_posting_auths", []) or []
                                     )
+                                    ra = payload.get("required_auths", []) or []
+                                    pauthor = rpa[0] if rpa else (ra[0] if ra else None)
+                                    pcontent = None
+                                    pbody = payload.get("json")
+                                    if isinstance(pbody, str):
+                                        try:
+                                            pbody = json.loads(pbody)
+                                        except Exception:
+                                            pbody = None
+                                    if (
+                                        isinstance(pbody, dict)
+                                        and pbody.get("type") == "post"
+                                    ):
+                                        pcontent = (pbody.get("content") or "").strip()
+                                    trx_id_over = None
+                                    if pauthor and pcontent:
+                                        key = (str(pauthor), pcontent)
+                                        q = app_map.get(key) or []
+                                        if q:
+                                            trx_id_over = q.pop(0)
+                                    # Fallback: index-aligned order
+                                    if trx_id_over is None and op_counter < len(
+                                        app_tx_ids
+                                    ):
+                                        trx_id_over = app_tx_ids[op_counter]
                                     inserted = _ingest_custom_json_op(
                                         block_num=bn,
                                         dt=dt,
