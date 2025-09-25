@@ -1,5 +1,16 @@
 {% extends "layout/base.html" %}
 {% block title %}Mentions{% endblock %}
+{% block extra_head %}
+  <meta property="og:title" content="Mentions - {{ config['APP_ID'] }}" />
+  <meta property="og:description" content="View mentions and interactions on {{ config['APP_ID'] }}, a microblogging platform built on Hive blockchain" />
+  <meta property="og:image" content="{{ url_for('static', filename='img/micro_bee.png', _external=True) }}" />
+  <meta property="og:url" content="{{ url_for('ui.mentions_page', _external=True) }}" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Mentions - {{ config['APP_ID'] }}" />
+  <meta name="twitter:description" content="View mentions and interactions on {{ config['APP_ID'] }}, a microblogging platform built on Hive blockchain" />
+  <meta name="twitter:image" content="{{ url_for('static', filename='img/micro_bee.png', _external=True) }}" />
+{% endblock %}
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-md-8" style="max-width: 600px;">

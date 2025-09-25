@@ -1,5 +1,24 @@
 {% extends "layout/base.html" %}
 {% block title %}@{{ username }}{% endblock %}
+{% block extra_head %}
+  <meta property="og:title" content="{{ profile.name or '@' + username }} on {{ config['APP_ID'] }}" />
+  <meta property="og:description" content="{{ profile.about or 'View ' + username + '\'s profile on ' + config['APP_ID'] + ', a microblogging platform built on Hive blockchain' }}" />
+  {% if profile.profile_image %}
+    <meta property="og:image" content="{{ profile.profile_image }}" />
+  {% else %}
+    <meta property="og:image" content="https://images.hive.blog/u/{{ username|lower|urlencode }}/avatar" />
+  {% endif %}
+  <meta property="og:url" content="{{ url_for('ui.public_profile', username=username, _external=True) }}" />
+  <meta property="og:type" content="profile" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="{{ profile.name or '@' + username }} on {{ config['APP_ID'] }}" />
+  <meta name="twitter:description" content="{{ profile.about or 'View ' + username + '\'s profile on ' + config['APP_ID'] + ', a microblogging platform built on Hive blockchain' }}" />
+  {% if profile.profile_image %}
+    <meta name="twitter:image" content="{{ profile.profile_image }}" />
+  {% else %}
+    <meta name="twitter:image" content="https://images.hive.blog/u/{{ username|lower|urlencode }}/avatar" />
+  {% endif %}
+{% endblock %}
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-md-8" style="max-width: 700px;">

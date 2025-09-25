@@ -1,5 +1,16 @@
 {% extends "layout/base.html" %}
 {% block title %}Moderation Audit{% endblock %}
+{% block extra_head %}
+  <meta property="og:title" content="Moderation Audit - {{ config['APP_ID'] }}" />
+  <meta property="og:description" content="Public record of moderated content and reasons on {{ config['APP_ID'] }}, a microblogging platform built on Hive blockchain" />
+  <meta property="og:image" content="{{ url_for('static', filename='img/micro_bee.png', _external=True) }}" />
+  <meta property="og:url" content="{{ url_for('ui.audit_page', _external=True) }}" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Moderation Audit - {{ config['APP_ID'] }}" />
+  <meta name="twitter:description" content="Public record of moderated content and reasons on {{ config['APP_ID'] }}, a microblogging platform built on Hive blockchain" />
+  <meta name="twitter:image" content="{{ url_for('static', filename='img/micro_bee.png', _external=True) }}" />
+{% endblock %}
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-xl-10 col-lg-11">
