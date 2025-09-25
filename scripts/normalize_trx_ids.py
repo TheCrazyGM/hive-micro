@@ -186,6 +186,61 @@ def normalize_trx_ids(
                 pass
         if not rows:
             app.logger.info("[normalize] no synthetic trx_ids found in selected range.")
+            # If requested, still attempt to repair reply_to that use synthetic IDs
+            try:
+                if FIX_REPLIES:
+                    qrep = Message.query.filter(Message.reply_to.contains("-"))
+                    if start_block is not None:
+                        qrep = qrep.filter(Message.block_num >= start_block)
+                    if end_block is not None:
+                        qrep = qrep.filter(Message.block_num <= end_block)
+                    reps = [
+                        r for r in list(qrep) if SYNTH_TRX_RE.match(r.reply_to or "")
+                    ]
+                    if verbose:
+                        app.logger.info(
+                            "[normalize] replies-only pass: candidates=%s", len(reps)
+                        )
+                    full_blk_cache: Dict[int, dict] = {}
+                    fixed = 0
+                    for ch in reps:
+                        syn = ch.reply_to or ""
+                        dec = _decode_synthetic(syn)
+                        real_target: Optional[str] = None
+                        if dec:
+                            bn2, txi2, _opi2 = dec
+                            try:
+                                if bn2 not in full_blk_cache:
+                                    full_blk_cache[bn2] = hv.rpc.get_block(bn2) or {}
+                                txs2 = full_blk_cache[bn2].get("transactions", []) or []
+                                if 0 <= txi2 < len(txs2):
+                                    real_target = txs2[txi2].get("transaction_id")
+                            except Exception:
+                                pass
+                        if real_target and real_target != syn:
+                            if verbose:
+                                try:
+                                    app.logger.info(
+                                        "[normalize] reply_to fix(replies-only) child_id=%s %s -> %s",
+                                        ch.id,
+                                        syn,
+                                        real_target,
+                                    )
+                                except Exception:
+                                    pass
+                            if not dry_run:
+                                ch.reply_to = real_target
+                                db.session.add(ch)
+                            fixed += 1
+                    if fixed and not dry_run:
+                        db.session.commit()
+                    if verbose:
+                        app.logger.info(
+                            "[normalize] replies-only pass: fixed=%s", fixed
+                        )
+            except Exception:
+                app.logger.exception("[normalize] error during replies-only pass")
+                db.session.rollback()
             return updated, examined, skipped
 
         # group by block
