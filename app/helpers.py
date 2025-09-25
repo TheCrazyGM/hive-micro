@@ -452,12 +452,15 @@ def _ingest_block(hv: Hive, block_num: int):
                     continue
                 if payload.get("id") != current_app.config["APP_ID"]:
                     continue
+                # Prefer the real transaction hash from the tx envelope when available
+                tx_hash = tx.get("transaction_id")
                 inserted += _ingest_custom_json_op(
                     block_num=block_num,
                     dt=dt,
                     payload=payload,
                     tx_idx=tx_idx,
                     op_idx=op_idx,
+                    trx_id_override=tx_hash,
                 )
             except Exception:
                 # Skip malformed ops but continue
@@ -575,7 +578,7 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                             # Build tx-id mapping using get_ops_in_block (more efficient than full block),
                             # primary map by (author, content) -> [trx_ids], and also an ordered list fallback.
                             app_map: dict[tuple[str, str], list[str]] = {}
-                            app_tx_ids: list[str] = []
+                            app_tx_ids: list[str | None] = []
                             try:
                                 raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
 
@@ -642,10 +645,12 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         if not fcontent:
                                             continue
                                         txh = _trx_from(ro)
-                                        sid = txh or f"{bn}-gs-{len(app_tx_ids)}"
-                                        app_tx_ids.append(sid)
-                                        key = (str(fauthor), fcontent)
-                                        app_map.setdefault(key, []).append(sid)
+                                        # Keep positional alignment; if txh is missing, append None to index list
+                                        app_tx_ids.append(txh)
+                                        # Only map content->txh when we have a real hash
+                                        if txh:
+                                            key = (str(fauthor), fcontent)
+                                            app_map.setdefault(key, []).append(txh)
                                     except Exception:
                                         continue
                             except Exception:

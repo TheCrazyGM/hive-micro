@@ -193,6 +193,8 @@ def normalize_trx_ids(
         for r in rows:
             by_block.setdefault(r.block_num, []).append(r)
 
+        changed_parent_ids: Dict[str, str] = {}
+
         for bn, msgs in by_block.items():
             examined += len(msgs)
             try:
@@ -307,6 +309,8 @@ def normalize_trx_ids(
                         m.trx_id = real_trx
                         db.session.add(m)
                         updated += 1
+                        # record mapping for child reply_to updates later
+                        changed_parent_ids[str(m.trx_id)] = str(real_trx)
                         used.add(real_trx)
                         if updated % batch_size == 0:
                             db.session.commit()
@@ -316,6 +320,83 @@ def normalize_trx_ids(
                 app.logger.exception("[normalize] error while processing block=%s", bn)
                 db.session.rollback()
                 continue
+
+        # Phase 2: update children reply_to that point to synthetic parents
+        # Strategy:
+        # 1) If a parent was changed in this run, update children whose reply_to equals the old id
+        # 2) If --fix-replies is enabled, also repair any remaining synthetic reply_to using synthetic-fallback
+        try:
+            fix_replies = bool(
+                os.getenv("FIX_REPLIES_FLAG_RUNTIME") == "1"
+            )  # env override, replaced below by args
+        except Exception:
+            fix_replies = False
+
+        try:
+            # Update children referencing changed parents
+            if changed_parent_ids:
+                for old_id, new_id in changed_parent_ids.items():
+                    children = Message.query.filter(Message.reply_to == old_id).all()
+                    for ch in children:
+                        if verbose:
+                            try:
+                                app.logger.info(
+                                    "[normalize] reply_to fix(parent-map) child_id=%s %s -> %s",
+                                    ch.id,
+                                    old_id,
+                                    new_id,
+                                )
+                            except Exception:
+                                pass
+                        if not dry_run:
+                            ch.reply_to = new_id
+                            db.session.add(ch)
+                if not dry_run:
+                    db.session.commit()
+
+            # Optionally scan remaining synthetic reply_to and fix via synthetic fallback
+            if FIX_REPLIES or fix_replies:
+                # Query candidates with '-' and client-side regex filter
+                qrep = Message.query.filter(Message.reply_to.contains("-"))
+                if start_block is not None:
+                    qrep = qrep.filter(Message.block_num >= start_block)
+                if end_block is not None:
+                    qrep = qrep.filter(Message.block_num <= end_block)
+                reps = [r for r in list(qrep) if SYNTH_TRX_RE.match(r.reply_to or "")]
+                full_blk_cache: Dict[int, dict] = {}
+                for ch in reps:
+                    syn = ch.reply_to or ""
+                    dec = _decode_synthetic(syn)
+                    real_target: Optional[str] = None
+                    if dec:
+                        bn2, txi2, _opi2 = dec
+                        try:
+                            if bn2 not in full_blk_cache:
+                                full_blk_cache[bn2] = hv.rpc.get_block(bn2) or {}
+                            txs2 = full_blk_cache[bn2].get("transactions", []) or []
+                            if 0 <= txi2 < len(txs2):
+                                real_target = txs2[txi2].get("transaction_id")
+                        except Exception:
+                            pass
+                    if real_target and real_target != syn:
+                        if verbose:
+                            try:
+                                app.logger.info(
+                                    "[normalize] reply_to fix(synthetic) child_id=%s %s -> %s",
+                                    ch.id,
+                                    syn,
+                                    real_target,
+                                )
+                            except Exception:
+                                pass
+                        if not dry_run:
+                            ch.reply_to = real_target
+                            db.session.add(ch)
+                if not dry_run:
+                    db.session.commit()
+        except Exception:
+            app.logger.exception("[normalize] error while updating reply_to references")
+            db.session.rollback()
 
     return updated, examined, skipped
 
@@ -362,6 +443,11 @@ def main():
         action="store_true",
         help="When no match, decode synthetic id (block-tx-op) and fetch transaction_id from full block",
     )
+    ap.add_argument(
+        "--fix-replies",
+        action="store_true",
+        help="Also repair reply_to fields that point to synthetic IDs",
+    )
 
     args = ap.parse_args()
     # Expose index-fallback via a module-level flag to keep function signature simple for internal calls
@@ -369,6 +455,9 @@ def main():
     INDEX_FALLBACK = args.index_fallback
     global SYNTHETIC_FALLBACK
     SYNTHETIC_FALLBACK = args.synthetic_fallback
+    # for internal use in normalize_trx_ids when called via other entrypoints
+    global FIX_REPLIES
+    FIX_REPLIES = args.fix_replies
 
     updated, examined, skipped = normalize_trx_ids(
         start_block=args.start_block,
