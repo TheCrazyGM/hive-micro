@@ -42,6 +42,7 @@
             /* Prevent content being hidden under fixed header/footer; JS will adjust exact padding */
             body { padding-top: 56px; padding-bottom: 48px; }
         </style>
+        {% block extra_head %}{% endblock %}
     </head>
 
     <body class="d-flex flex-column min-vh-100">

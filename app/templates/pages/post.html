@@ -1,6 +1,27 @@
 {% extends "layout/base.html" %}
 {% import "partials/posts.html" as posts %}
 {% block title %}Post{% endblock %}
+{% block extra_head %}
+  {% if item %}
+    <meta property="og:title" content="@{{ item.author }} on {{ config['APP_ID'] }}" />
+    <meta property="og:description" content="{{ item.html|striptags|truncate(200) }}" />
+    <meta property="og:image" content="https://images.hive.blog/u/{{ item.author|lower|urlencode }}/avatar" />
+    <meta property="og:url" content="{{ url_for('post_view', trx_id=trx_id, _external=True) }}" />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="@{{ item.author }} on {{ config['APP_ID'] }}" />
+    <meta name="twitter:description" content="{{ item.html|striptags|truncate(200) }}" />
+    <meta name="twitter:image" content="https://images.hive.blog/u/{{ item.author|lower|urlencode }}/avatar" />
+  {% else %}
+    <meta property="og:title" content="{{ config['APP_ID'] }} - Post" />
+    <meta property="og:description" content="A post on {{ config['APP_ID'] }}" />
+    <meta property="og:url" content="{{ url_for('post_view', trx_id=trx_id, _external=True) }}" />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="{{ config['APP_ID'] }} - Post" />
+    <meta name="twitter:description" content="A post on {{ config['APP_ID'] }}" />
+  {% endif %}
+{% endblock %}
 {% block content %}
   <div class="row justify-content-center">
     <div class="col-md-10 col-lg-9 col-xl-8" style="max-width: 960px;">
