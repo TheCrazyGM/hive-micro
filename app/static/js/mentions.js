@@ -102,6 +102,14 @@ document.addEventListener("DOMContentLoaded", () => {
     rightWrap.appendChild(tagWrap);
     rightWrap.appendChild(heartBtn);
     rightWrap.appendChild(replyBtn);
+    // Tip button (handled globally by tip.js)
+    const tipBtn = document.createElement('button');
+    tipBtn.type = 'button';
+    tipBtn.className = 'btn btn-sm btn-outline-success tip-btn';
+    tipBtn.setAttribute('title', 'Send a tip');
+    tipBtn.setAttribute('data-recipient', String(item.author || ''));
+    tipBtn.textContent = 'Tip';
+    rightWrap.appendChild(tipBtn);
 
     meta.appendChild(ts);
     meta.appendChild(rightWrap);

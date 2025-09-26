@@ -257,6 +257,123 @@ def _get_head_block_num(hv: Hive) -> int:
     return props.get("head_block_number") or props.get("last_irreversible_block_num")
 
 
+def _ops_map_for_block(
+    hv: Hive, bn: int, app_id: str
+) -> tuple[dict[tuple[str, str], list[str]], list[str]]:
+    """Return (map, order) for our app's custom_json ops in a block.
+    - map: (author, content) -> [trx_ids]
+    - order: [trx_ids] in the order ops were seen in the block (for index fallback)
+    Tries get_ops_in_block first; if empty, falls back to full block fetch.
+    Only real transaction hashes are included; items without a hash are skipped from map,
+    but order preserves positional alignment with None placeholders.
+    """
+    mp: dict[tuple[str, str], list[str]] = {}
+    order: list[str | None] = []
+    try:
+        raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
+        for ro in raw_ops:
+            try:
+                op_pair = ro.get("op") if isinstance(ro, dict) else None
+                if not isinstance(op_pair, (list, tuple)) or len(op_pair) != 2:
+                    continue
+                t, pl = op_pair
+                if t != "custom_json":
+                    continue
+                if isinstance(pl, str):
+                    try:
+                        pl = json.loads(pl)
+                    except Exception:
+                        pl = {}
+                if not isinstance(pl, dict):
+                    continue
+                if pl.get("id") != app_id:
+                    continue
+                rpa = pl.get("required_posting_auths", []) or []
+                ra = pl.get("required_auths", []) or []
+                author = rpa[0] if rpa else (ra[0] if ra else None)
+                if not author:
+                    continue
+                body = pl.get("json")
+                if isinstance(body, str):
+                    try:
+                        body = json.loads(body)
+                    except Exception:
+                        body = None
+                if not isinstance(body, dict) or body.get("type") != "post":
+                    continue
+                content = (body.get("content") or "").strip()
+                if not content:
+                    continue
+                txh = None
+                for k in ("transaction_id", "trx_id", "trxId"):
+                    v = ro.get(k)
+                    if v:
+                        txh = str(v)
+                        break
+                # Only map when we have a real hash; always keep order (may be None)
+                order.append(txh)
+                if txh:
+                    key = (str(author), content)
+                    mp.setdefault(key, []).append(txh)
+            except Exception:
+                continue
+    except Exception:
+        # leave mp/order empty; fallback below
+        mp = {}
+        order = []
+
+    if mp or order:
+        # Filter out None placeholders from order; map already only contains real hashes
+        return mp, [x for x in order if x]
+
+    # Fallback: full block
+    try:
+        full_blk = hv.rpc.get_block(bn) or {}
+        txs = full_blk.get("transactions", []) or []
+        for tx in txs:
+            try:
+                txh = tx.get("transaction_id")
+                ops = tx.get("operations", []) or []
+                for op in ops:
+                    try:
+                        if not isinstance(op, (list, tuple)) or len(op) != 2:
+                            continue
+                        f_type, fp = op
+                        if f_type != "custom_json":
+                            continue
+                        if not isinstance(fp, dict):
+                            continue
+                        if fp.get("id") != app_id:
+                            continue
+                        rpa = fp.get("required_posting_auths", []) or []
+                        ra = fp.get("required_auths", []) or []
+                        author = rpa[0] if rpa else (ra[0] if ra else None)
+                        if not author:
+                            continue
+                        body = fp.get("json")
+                        if isinstance(body, str):
+                            try:
+                                body = json.loads(body)
+                            except Exception:
+                                body = None
+                        if not isinstance(body, dict) or body.get("type") != "post":
+                            continue
+                        content = (body.get("content") or "").strip()
+                        if not content:
+                            continue
+                        order.append(txh)
+                        if txh:
+                            key = (str(author), content)
+                            mp.setdefault(key, []).append(txh)
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return mp, [x for x in order if x]
+
+
 def _get_following_usernames(username: str) -> set[str]:
     """Fetch following set from chain using condenser API and cache it briefly.
     Username normalization is important: Hive accounts are lowercase.
@@ -353,6 +470,7 @@ def _ingest_custom_json_op(
     tx_idx: int,
     op_idx: int,
     trx_id_override: str | None = None,
+    seen_ids: set[str] | None = None,
 ) -> int:
     """Ingest a single custom_json op for our app ID. Returns 1 if inserted, else 0.
 
@@ -401,23 +519,44 @@ def _ingest_custom_json_op(
             or payload.get("transaction_id")
             or f"{block_num}-{tx_idx}-{op_idx}"
         )
+        # Require real transaction hash; skip synthetic fallback like "block-tx-op"
+        try:
+            import re as _re_syn
 
-        if not Message.query.filter_by(trx_id=trx_id).first():
-            m = Message(
-                trx_id=trx_id,
-                block_num=block_num,
-                timestamp=dt,
-                author=author,
-                type="post",
-                content=content,
-                mentions=json.dumps(mentions) if mentions else None,
-                tags=json.dumps(tags) if tags else None,
-                reply_to=reply_to,
-                raw_json=json.dumps(body),
-            )
-            db.session.add(m)
-            return 1
-        return 0
+            if isinstance(trx_id, str) and _re_syn.fullmatch(r"\d+-\d+-\d+", trx_id):
+                try:
+                    current_app.logger.warning(
+                        "[ingest] skipping synthetic trx_id=%s at block=%s (need real transaction hash)",
+                        trx_id,
+                        block_num,
+                    )
+                except Exception:
+                    pass
+                return 0
+        except Exception:
+            pass
+        # Prevent duplicates within the same transaction/batch
+        if seen_ids is not None and trx_id in seen_ids:
+            return 0
+        # Skip if already in DB
+        if Message.query.filter_by(trx_id=trx_id).first():
+            return 0
+        m = Message(
+            trx_id=trx_id,
+            block_num=block_num,
+            timestamp=dt,
+            author=author,
+            type="post",
+            content=content,
+            mentions=json.dumps(mentions) if mentions else None,
+            tags=json.dumps(tags) if tags else None,
+            reply_to=reply_to,
+            raw_json=json.dumps(body),
+        )
+        db.session.add(m)
+        if seen_ids is not None:
+            seen_ids.add(trx_id)
+        return 1
     except Exception as e:
         try:
             current_app.logger.exception(
@@ -440,6 +579,7 @@ def _ingest_block(hv: Hive, block_num: int):
     dt = _parse_timestamp(ts) if isinstance(ts, str) else _utcnow_naive()
     txs = blk.get("transactions", [])
     inserted = 0
+    seen_ids: set[str] = set()
     for tx_idx, tx in enumerate(txs):
         # Operations are typically [[op_type, op_payload], ...]
         ops = tx.get("operations", [])
@@ -461,6 +601,7 @@ def _ingest_block(hv: Hive, block_num: int):
                     tx_idx=tx_idx,
                     op_idx=op_idx,
                     trx_id_override=tx_hash,
+                    seen_ids=seen_ids,
                 )
             except Exception:
                 # Skip malformed ops but continue
@@ -472,7 +613,13 @@ def _ingest_block(hv: Hive, block_num: int):
             )
         except Exception:
             pass
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
     return inserted
 
 
@@ -575,92 +722,16 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                 else _utcnow_naive()
                             )
 
-                            # Build tx-id mapping using get_ops_in_block (more efficient than full block),
-                            # primary map by (author, content) -> [trx_ids], and also an ordered list fallback.
-                            app_map: dict[tuple[str, str], list[str]] = {}
-                            app_tx_ids: list[str | None] = []
-                            try:
-                                raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
-
-                                # raw_ops items are dicts; trx id key may vary between nodes/clients
-                                def _trx_from(opd: dict) -> str | None:
-                                    for k in ("transaction_id", "trx_id", "trxId"):
-                                        v = opd.get(k)
-                                        if v:
-                                            return str(v)
-                                    return None
-
-                                for ro in raw_ops:
-                                    try:
-                                        # Expect e.g., {"op": ["custom_json", payload], ...}
-                                        op_pair = (
-                                            ro.get("op")
-                                            if isinstance(ro, dict)
-                                            else None
-                                        )
-                                        if (
-                                            not isinstance(op_pair, (list, tuple))
-                                            or len(op_pair) != 2
-                                        ):
-                                            continue
-                                        f_type, f_payload = op_pair
-                                        if f_type != "custom_json":
-                                            continue
-                                        if isinstance(f_payload, str):
-                                            try:
-                                                f_payload = json.loads(f_payload)
-                                            except Exception:
-                                                f_payload = {}
-                                        if not isinstance(f_payload, dict):
-                                            continue
-                                        if (
-                                            f_payload.get("id")
-                                            != current_app.config["APP_ID"]
-                                        ):
-                                            continue
-                                        # Author
-                                        rpa = (
-                                            f_payload.get("required_posting_auths", [])
-                                            or []
-                                        )
-                                        ra = f_payload.get("required_auths", []) or []
-                                        fauthor = (
-                                            rpa[0] if rpa else (ra[0] if ra else None)
-                                        )
-                                        if not fauthor:
-                                            continue
-                                        # Content
-                                        fbody = f_payload.get("json")
-                                        if isinstance(fbody, str):
-                                            try:
-                                                fbody = json.loads(fbody)
-                                            except Exception:
-                                                fbody = None
-                                        if (
-                                            not isinstance(fbody, dict)
-                                            or fbody.get("type") != "post"
-                                        ):
-                                            continue
-                                        fcontent = (fbody.get("content") or "").strip()
-                                        if not fcontent:
-                                            continue
-                                        txh = _trx_from(ro)
-                                        # Keep positional alignment; if txh is missing, append None to index list
-                                        app_tx_ids.append(txh)
-                                        # Only map content->txh when we have a real hash
-                                        if txh:
-                                            key = (str(fauthor), fcontent)
-                                            app_map.setdefault(key, []).append(txh)
-                                    except Exception:
-                                        continue
-                            except Exception:
-                                # Leave maps empty; fallback will be used
-                                app_map = {}
-                                app_tx_ids = []
+                            # Build tx-id mapping via helper (prefers get_ops_in_block, falls back to full block)
+                            app_map, app_tx_ids = _ops_map_for_block(
+                                hv, bn, current_app.config["APP_ID"]
+                            )
 
                             # Iterate high-level operations
                             op_counter = 0
                             inserted_this_block = 0
+                            # Track seen trx_ids within this block to avoid duplicates
+                            seen_ids_block: set[str] = set()
                             for op in getattr(blk, "operations", []):
                                 try:
                                     # Expect dict format {"type": ..., "value": {...}}
@@ -720,11 +791,18 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         tx_idx=0,
                                         op_idx=op_counter,
                                         trx_id_override=trx_id_over,
+                                        seen_ids=seen_ids_block,
                                     )
                                     if inserted:
                                         # Commit periodically to keep transactions small
                                         if op_counter % 200 == 0:
-                                            db.session.commit()
+                                            try:
+                                                db.session.commit()
+                                            except Exception:
+                                                try:
+                                                    db.session.rollback()
+                                                except Exception:
+                                                    pass
                                         inserted_this_block += inserted
                                     op_counter += 1
                                 except Exception:
@@ -741,7 +819,13 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                             except Exception:
                                 pass
                             # Commit at end of each block in bulk mode
-                            db.session.commit()
+                            try:
+                                db.session.commit()
+                            except Exception:
+                                try:
+                                    db.session.rollback()
+                                except Exception:
+                                    pass
                         try:
                             current_app.logger.info(
                                 "[watcher] bulk mode processed blocks=%s inserted_ops=%s; last_block=%s",

@@ -96,6 +96,16 @@ def create_app():
     db.init_app(app)
     cache.init_app(app)
     app.config["APP_ID"] = os.environ.get("HIVE_MICRO_APP_ID", "hive.micro")
+    # Tipping configuration
+    extra_tokens = os.environ.get("HIVE_MICRO_TIP_TOKENS", "").strip()
+    extra_list = [t.strip().upper() for t in extra_tokens.split(",") if t.strip()]
+    # Always include HIVE and HBD first
+    app.config["TIP_TOKENS"] = ["HIVE", "HBD"] + [
+        t for t in extra_list if t not in ("HIVE", "HBD")
+    ]
+    app.config["TIP_MEMO_PREFIX"] = os.environ.get(
+        "HIVE_MICRO_TIP_MEMO_PREFIX", f"{app.config['APP_ID']} tip"
+    )
 
     # Initialize Hive instance with optional custom nodes
     app.config["HIVE_NODES"] = os.environ.get("HIVE_NODES", "").strip()
@@ -144,7 +154,13 @@ def create_app():
             if not tok or hdr != tok or cky != tok:
                 return abort(403)
 
-    start_block_watcher(app)
+    # Start watcher only once (avoid duplicate threads under Flask reloader)
+    try:
+        is_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    except Exception:
+        is_reloader_child = True
+    if not app.debug or is_reloader_child:
+        start_block_watcher(app)
     atexit.register(stop_block_watcher)
 
     # --- Jinja Filters ---

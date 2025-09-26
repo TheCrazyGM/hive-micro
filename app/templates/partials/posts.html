@@ -60,6 +60,14 @@
               >
                 ❤ <span class="ms-1 heart-count">{{ heart_count }}</span>
               </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-success tip-btn"
+                title="Send a tip"
+                data-recipient="{{ item.author }}"
+              >
+                Tip
+              </button>
             {% endif %}
           </div>
         </div>
