@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const p = document.createElement("p");
     p.className = "card-text";
-    p.innerHTML = window.linkifyText ? window.linkifyText(item.content) : linkify(item.content);
+    p.innerHTML = item.html || (window.linkifyText ? window.linkifyText(item.content) : linkify(item.content));
     // Initialize previews (e.g., YouTube) similarly to feed
     try { if (window.initYouTubePreviews) window.initYouTubePreviews(p.parentElement || body || card); } catch (_) {}
 
