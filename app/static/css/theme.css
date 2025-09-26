@@ -71,6 +71,9 @@ html[data-bs-theme="dark"] {
   --bs-navbar-hover-color: var(--hive-black);
   --bs-navbar-brand-color: var(--hive-black);
   --bs-navbar-brand-hover-color: var(--hive-red);
+    /* Ensure toggler icon is visible in light theme */
+  --bs-navbar-toggler-border-color: rgba(33, 37, 41, 0.2);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(33, 37, 41, 0.8)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
   backdrop-filter: saturate(1.4) blur(6px);
   -webkit-backdrop-filter: saturate(1.4) blur(6px);
 }
@@ -79,7 +82,14 @@ html[data-bs-theme="dark"] .navbar {
   --bs-navbar-hover-color: var(--hive-black);
   --bs-navbar-brand-color: var(--hive-black);
   --bs-navbar-brand-hover-color: var(--hive-red);
+    /* Dark theme toggler icon */
+  --bs-navbar-toggler-border-color: rgba(230, 237, 243, 0.35);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(230, 237, 243, 0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 }
+
+/* Reinforce stacking context for fixed header/footer so they stay above scrolling content */
+.navbar.fixed-top { z-index: 1030; }
+footer.fixed-bottom { z-index: 1030; }
 
 .navbar .nav-link.active,
 .navbar .nav-link:focus,
