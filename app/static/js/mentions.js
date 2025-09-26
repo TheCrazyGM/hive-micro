@@ -37,7 +37,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const p = document.createElement("p");
     p.className = "card-text";
-    p.innerHTML = linkify(item.content);
+    p.innerHTML = window.linkifyText ? window.linkifyText(item.content) : linkify(item.content);
+    // Initialize previews (e.g., YouTube) similarly to feed
+    try { if (window.initYouTubePreviews) window.initYouTubePreviews(p.parentElement || body || card); } catch (_) {}
 
     // In reply to indicator (async)
     let replyIndicator = window.buildReplyIndicator ? await window.buildReplyIndicator(item.reply_to) : null;
@@ -57,8 +59,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const rightWrap = document.createElement('div');
-    rightWrap.className = 'd-flex align-items-center gap-2';
-    const tagWrap = (window.buildTagChips ? window.buildTagChips(item.tags || [], { basePath: '/feed?tag=', itemClass: 'badge tag-chip text-decoration-none', extraItemClass: 'me-1' }) : (function(){ const d=document.createElement('div'); d.className='d-flex flex-wrap gap-1 mb-2'; return d; })());
+    rightWrap.className = 'meta-right d-flex align-items-center gap-2';
+    const tagWrap = (window.buildTagChips ? window.buildTagChips(item.tags || [], { basePath: '?tag=', itemClass: 'badge tag-chip text-decoration-none' }) : (function(){ const d=document.createElement('div'); d.className='d-flex flex-wrap gap-1 mb-2'; return d; })());
 
     // Heart (appreciation) button
     const heartBtn = document.createElement('button');
@@ -99,7 +101,6 @@ document.addEventListener("DOMContentLoaded", () => {
       window.location.href = url;
     });
 
-    rightWrap.appendChild(tagWrap);
     rightWrap.appendChild(heartBtn);
     rightWrap.appendChild(replyBtn);
     // Tip button (handled globally by tip.js)
@@ -117,6 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
     body.appendChild(headerWrap);
     if (replyIndicator) body.appendChild(replyIndicator);
     body.appendChild(p);
+    if (tagWrap.childElementCount) body.appendChild(tagWrap);
     body.appendChild(meta);
     card.appendChild(body);
     return card;
