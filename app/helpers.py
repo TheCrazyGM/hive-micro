@@ -374,6 +374,25 @@ def _ops_map_for_block(
     return mp, [x for x in order if x]
 
 
+def _extract_trx_id_from_bulk_op(op: dict | None, payload: dict | None) -> str | None:
+    """Best-effort extraction of a transaction id from bulk iterator data."""
+    for source in (payload, op):
+        if not isinstance(source, dict):
+            continue
+        for key in (
+            "transaction_id",
+            "trx_id",
+            "trxId",
+            "transactionId",
+            "tx_id",
+            "txid",
+        ):
+            val = source.get(key)
+            if val:
+                return str(val)
+    return None
+
+
 def _get_following_usernames(username: str) -> set[str]:
     """Fetch following set from chain using condenser API and cache it briefly.
     Username normalization is important: Hive accounts are lowercase.
@@ -722,19 +741,14 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                 else _utcnow_naive()
                             )
 
-                            # Build tx-id mapping via helper (prefers get_ops_in_block, falls back to full block)
-                            app_map, app_tx_ids = _ops_map_for_block(
-                                hv, bn, current_app.config["APP_ID"]
-                            )
-
-                            # Iterate high-level operations
-                            op_counter = 0
-                            inserted_this_block = 0
+                            # Iterate high-level operations, lazily resolving missing trx ids
+                            operations = getattr(blk, "operations", [])
+                            pending_ops: list[dict] = []
                             # Track seen trx_ids within this block to avoid duplicates
                             seen_ids_block: set[str] = set()
-                            for op in getattr(blk, "operations", []):
+
+                            for op in operations:
                                 try:
-                                    # Expect dict format {"type": ..., "value": {...}}
                                     optype = (
                                         op.get("type") if isinstance(op, dict) else None
                                     )
@@ -755,7 +769,6 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         != current_app.config["APP_ID"]
                                     ):
                                         continue
-                                    # Compute mapping key for preferred match (author, content)
                                     rpa = (
                                         payload.get("required_posting_auths", []) or []
                                     )
@@ -773,29 +786,65 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                         and pbody.get("type") == "post"
                                     ):
                                         pcontent = (pbody.get("content") or "").strip()
-                                    trx_id_over = None
-                                    if pauthor and pcontent:
-                                        key = (str(pauthor), pcontent)
-                                        q = app_map.get(key) or []
-                                        if q:
-                                            trx_id_over = q.pop(0)
-                                    # Fallback: index-aligned order
-                                    if trx_id_over is None and op_counter < len(
-                                        app_tx_ids
-                                    ):
-                                        trx_id_over = app_tx_ids[op_counter]
+
+                                    trx_id_over = _extract_trx_id_from_bulk_op(
+                                        op, payload
+                                    )
+
+                                    pending_ops.append(
+                                        {
+                                            "payload": payload,
+                                            "author": str(pauthor) if pauthor else None,
+                                            "content": pcontent,
+                                            "seq": len(pending_ops),
+                                            "trx_id": trx_id_over,
+                                        }
+                                    )
+                                except Exception:
+                                    continue
+
+                            inserted_this_block = 0
+                            if pending_ops:
+                                needs_lookup = any(
+                                    entry["trx_id"] is None for entry in pending_ops
+                                )
+                                app_map: dict[tuple[str, str], list[str]] = {}
+                                app_tx_ids: list[str] = []
+                                if needs_lookup:
+                                    try:
+                                        app_map, app_tx_ids = _ops_map_for_block(
+                                            hv,
+                                            bn,
+                                            current_app.config["APP_ID"],
+                                        )
+                                    except Exception:
+                                        app_map, app_tx_ids = {}, []
+
+                                for entry in pending_ops:
+                                    if entry["trx_id"] is None:
+                                        author = entry.get("author")
+                                        content = entry.get("content")
+                                        if author and content and app_map:
+                                            key = (author, content)
+                                            q = app_map.get(key) or []
+                                            if q:
+                                                entry["trx_id"] = q.pop(0)
+                                        if entry["trx_id"] is None and entry[
+                                            "seq"
+                                        ] < len(app_tx_ids):
+                                            entry["trx_id"] = app_tx_ids[entry["seq"]]
+
                                     inserted = _ingest_custom_json_op(
                                         block_num=bn,
                                         dt=dt,
-                                        payload=payload,
+                                        payload=entry["payload"],
                                         tx_idx=0,
-                                        op_idx=op_counter,
-                                        trx_id_override=trx_id_over,
+                                        op_idx=entry["seq"],
+                                        trx_id_override=entry.get("trx_id"),
                                         seen_ids=seen_ids_block,
                                     )
                                     if inserted:
-                                        # Commit periodically to keep transactions small
-                                        if op_counter % 200 == 0:
+                                        if entry["seq"] % 200 == 0:
                                             try:
                                                 db.session.commit()
                                             except Exception:
@@ -804,9 +853,7 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                                 except Exception:
                                                     pass
                                         inserted_this_block += inserted
-                                    op_counter += 1
-                                except Exception:
-                                    continue
+
                             ck.last_block = bn
                             processed_blocks += 1
                             total_inserted += inserted_this_block
