@@ -594,6 +594,10 @@ def _ingest_block(hv: Hive, block_num: int):
     blk = hv.rpc.get_block(block_num)
     if not blk:
         return 0
+    # Unwrap if nested (e.g. from get_block)
+    if "block" in blk:
+        blk = blk["block"]
+
     ts = blk.get("timestamp")
     dt = _parse_timestamp(ts) if isinstance(ts, str) else _utcnow_naive()
     txs = blk.get("transactions", [])
@@ -604,9 +608,14 @@ def _ingest_block(hv: Hive, block_num: int):
         ops = tx.get("operations", [])
         for op_idx, op in enumerate(ops):
             try:
-                if not isinstance(op, (list, tuple)) or len(op) != 2:
+                if isinstance(op, (list, tuple)) and len(op) == 2:
+                    op_type, payload = op
+                elif isinstance(op, dict) and "type" in op and "value" in op:
+                    op_type = op["type"]
+                    payload = op["value"]
+                else:
                     continue
-                op_type, payload = op
+
                 if op_type != "custom_json":
                     continue
                 if payload.get("id") != current_app.config["APP_ID"]:
