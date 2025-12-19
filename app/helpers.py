@@ -270,13 +270,23 @@ def _ops_map_for_block(
     mp: dict[tuple[str, str], list[str]] = {}
     order: list[str | None] = []
     try:
-        raw_ops = hv.rpc.get_ops_in_block(bn, True) or []
+        raw_ops = hv.rpc.get_ops_in_block(bn, False) or []
         for ro in raw_ops:
             try:
                 op_pair = ro.get("op") if isinstance(ro, dict) else None
-                if not isinstance(op_pair, (list, tuple)) or len(op_pair) != 2:
+                t = None
+                pl = None
+                if isinstance(op_pair, (list, tuple)) and len(op_pair) == 2:
+                    t, pl = op_pair
+                elif isinstance(op_pair, dict):
+                    t = op_pair.get("type")
+                    pl = op_pair.get("value")
+                if not t:
                     continue
-                t, pl = op_pair
+                if isinstance(t, int):
+                    t = "custom_json" if t == 18 else t
+                if isinstance(t, str) and t.endswith("_operation"):
+                    t = t[:-10]
                 if t != "custom_json":
                     continue
                 if isinstance(pl, str):
@@ -336,9 +346,19 @@ def _ops_map_for_block(
                 ops = tx.get("operations", []) or []
                 for op in ops:
                     try:
-                        if not isinstance(op, (list, tuple)) or len(op) != 2:
+                        f_type = None
+                        fp = None
+                        if isinstance(op, (list, tuple)) and len(op) == 2:
+                            f_type, fp = op
+                        elif isinstance(op, dict):
+                            f_type = op.get("type")
+                            fp = op.get("value")
+                        if not f_type:
                             continue
-                        f_type, fp = op
+                        if isinstance(f_type, int):
+                            f_type = "custom_json" if f_type == 18 else f_type
+                        if isinstance(f_type, str) and f_type.endswith("_operation"):
+                            f_type = f_type[:-10]
                         if f_type != "custom_json":
                             continue
                         if not isinstance(fp, dict):
@@ -616,12 +636,23 @@ def _ingest_block(hv: Hive, block_num: int):
                 else:
                     continue
 
+                if isinstance(op_type, int):
+                    op_type = "custom_json" if op_type == 18 else op_type
+                if isinstance(op_type, str) and op_type.endswith("_operation"):
+                    op_type = op_type[:-10]
                 if op_type != "custom_json":
                     continue
                 if payload.get("id") != current_app.config["APP_ID"]:
                     continue
                 # Prefer the real transaction hash from the tx envelope when available
                 tx_hash = tx.get("transaction_id")
+                if not tx_hash:
+                    try:
+                        tx_ids = blk.get("transaction_ids") or []
+                        if len(tx_ids) > tx_idx:
+                            tx_hash = tx_ids[tx_idx]
+                    except Exception:
+                        tx_hash = None
                 inserted += _ingest_custom_json_op(
                     block_num=block_num,
                     dt=dt,
