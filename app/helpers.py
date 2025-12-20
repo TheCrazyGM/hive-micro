@@ -619,7 +619,12 @@ def _ingest_block(hv: Hive, block_num: int):
         blk = blk["block"]
 
     ts = blk.get("timestamp")
-    dt = _parse_timestamp(ts) if isinstance(ts, str) else _utcnow_naive()
+    if isinstance(ts, datetime):
+        dt = _to_naive_utc(ts)
+    elif isinstance(ts, str):
+        dt = _parse_timestamp(ts)
+    else:
+        dt = _utcnow_naive()
     txs = blk.get("transactions", [])
     inserted = 0
     seen_ids: set[str] = set()
@@ -775,11 +780,13 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                                 ts = blk["timestamp"]
                             except Exception:
                                 ts = getattr(blk, "timestamp", None)
-                            dt = (
-                                _parse_timestamp(ts)
-                                if isinstance(ts, str)
-                                else _utcnow_naive()
-                            )
+
+                            if isinstance(ts, datetime):
+                                dt = _to_naive_utc(ts)
+                            elif isinstance(ts, str):
+                                dt = _parse_timestamp(ts)
+                            else:
+                                dt = _utcnow_naive()
 
                             # Iterate high-level operations, lazily resolving missing trx ids
                             operations = getattr(blk, "operations", [])
