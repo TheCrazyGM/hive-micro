@@ -30,4 +30,3 @@ CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app.wsgi:app"]
 
 # To run the watcher instead, override the command:
 # docker run --rm -e HIVE_MICRO_WATCHER=1 -p 8000:8000 <image> python -m app.watcher
-

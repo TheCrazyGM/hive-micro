@@ -14,10 +14,11 @@ from .models import db
 
 def create_app():
     app = Flask(__name__)
-    # Use a stable secret so session cookies remain valid across reloads
-    app.config["SECRET_KEY"] = os.environ.get(
-        "FLASK_SECRET_KEY", "dev-secret-key-change-me"
+    # Use environment secret; fallback to a random token for safety
+    app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(
+        32
     )
+
     # Database & Cache config
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
         "DATABASE_URL", "sqlite:///app.db"

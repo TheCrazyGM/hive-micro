@@ -420,6 +420,9 @@ def mod_audit_public():
 
     items: list[dict] = []
     quorum = int(current_app.config.get("MOD_QUORUM", 1))
+    is_mod = session.get("username", "").lower() in (
+        current_app.config.get("MODERATORS") or []
+    )
 
     # 1) Hidden items (from Moderation table), ordered by mod_at desc
     mod_q = Moderation.query.filter(Moderation.visibility == "hidden")
@@ -431,11 +434,12 @@ def mod_audit_public():
         m = Message.query.filter_by(trx_id=mod.trx_id).first()
         if not m:
             continue
+        display_content = m.content if is_mod else "[Content hidden by moderator]"
         items.append(
             {
                 "trx_id": m.trx_id,
                 "author": m.author,
-                "content": m.content,
+                "content": display_content,
                 "tags": json.loads(m.tags) if m.tags else [],
                 "hidden": True,
                 "pending": False,
@@ -517,11 +521,12 @@ def mod_audit_public():
         m = Message.query.filter_by(trx_id=a.trx_id).first()
         if not m:
             continue
+        display_content = m.content if is_mod else "[Content pending moderation]"
         items.append(
             {
                 "trx_id": m.trx_id,
                 "author": m.author,
-                "content": m.content,
+                "content": display_content,
                 "tags": json.loads(m.tags) if m.tags else [],
                 "hidden": False,
                 "pending": True,
