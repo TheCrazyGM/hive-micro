@@ -1045,6 +1045,87 @@ def stop_block_watcher(timeout: float = 2.0):
         pass
 
 
+_last_block_progress_check = {"last_block": 0, "timestamp": 0.0}
+
+
+def restart_block_watcher(app=None):
+    """Forcefully restart the watcher thread by signaling the old one and starting a new one."""
+    if os.environ.get("HIVE_MICRO_WATCHER", "1") != "1":
+        return
+    if app is None:
+        try:
+            app = current_app._get_current_object()
+        except Exception:
+            return
+    global _watcher_thread, _watcher_stop_event
+    try:
+        _watcher_stop_event.set()
+    except Exception:
+        pass
+    if _watcher_thread is not None:
+        try:
+            _watcher_thread.join(timeout=2.0)
+        except Exception:
+            pass
+    _watcher_stop_event = threading.Event()
+    _watcher_thread = threading.Thread(
+        target=_watcher_loop, args=(app, _watcher_stop_event), daemon=True
+    )
+    _watcher_thread.start()
+
+
+def check_and_restart_watcher_if_lagging(app, last_block, head_block):
+    """Check if the watcher is lagging by > HIVE_MICRO_WATCHER_MAX_LAG blocks
+    and has not made progress in HIVE_MICRO_WATCHER_NO_PROGRESS_SEC seconds.
+    If so, forcefully restart it.
+    """
+    global _watcher_thread, _last_block_progress_check
+    if _watcher_thread is None:
+        return False
+
+    try:
+        max_lag = int(os.environ.get("HIVE_MICRO_WATCHER_MAX_LAG", "1000"))
+    except Exception:
+        max_lag = 1000
+
+    try:
+        no_progress_timeout = float(
+            os.environ.get("HIVE_MICRO_WATCHER_NO_PROGRESS_SEC", "60.0")
+        )
+    except Exception:
+        no_progress_timeout = 60.0
+
+    if last_block > 0 and head_block > 0:
+        lag = head_block - last_block
+        if lag > max_lag:
+            now = time.time()
+            if last_block != _last_block_progress_check["last_block"]:
+                _last_block_progress_check["last_block"] = last_block
+                _last_block_progress_check["timestamp"] = now
+            else:
+                stuck_duration = now - _last_block_progress_check["timestamp"]
+                if stuck_duration > no_progress_timeout:
+                    try:
+                        app.logger.warning(
+                            "[watcher] watcher is lagging behind by %s blocks (last=%s, head=%s) "
+                            "and has not progressed for %.1fs (timeout=%.1fs). Forcefully restarting watcher...",
+                            lag,
+                            last_block,
+                            head_block,
+                            stuck_duration,
+                            no_progress_timeout,
+                        )
+                    except Exception:
+                        pass
+                    _last_block_progress_check["timestamp"] = now
+                    restart_block_watcher(app)
+                    return True
+        else:
+            _last_block_progress_check["last_block"] = last_block
+            _last_block_progress_check["timestamp"] = time.time()
+    return False
+
+
 def _parse_login_payload():
     """Parse and normalize login payload from JSON body.
     Accepts alternative keys often used by clients.

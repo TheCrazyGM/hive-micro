@@ -174,7 +174,8 @@
                     try {
                         const r = await fetch('/api/v1/status');
                         const d = await r.json();
-                        el.textContent = `messages: ${d.messages} · last block: ${d.last_block}`;
+                        const head = d.head_block || 0;
+                        el.textContent = `messages: ${d.messages} · last block: ${d.last_block}/${head}`;
                     } catch (e) {
                         el.textContent = 'status unavailable';
                     }

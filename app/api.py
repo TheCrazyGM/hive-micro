@@ -609,10 +609,33 @@ def api_mentions_seen():
 def api_status():
     total = Message.query.count()
     ck = Checkpoint.query.get(1)
+    last_block = ck.last_block if ck else 0
+
+    from .helpers import (
+        _get_hive_instance,
+        _get_head_block_num,
+        check_and_restart_watcher_if_lagging,
+    )
+
+    try:
+        hv = _get_hive_instance()
+        head_block = _get_head_block_num(hv) or 0
+    except Exception:
+        head_block = 0
+
+    # If the watcher is running in this process, check lag/progress and restart if needed
+    try:
+        check_and_restart_watcher_if_lagging(
+            current_app._get_current_object(), last_block, head_block
+        )
+    except Exception:
+        pass
+
     return jsonify(
         {
             "messages": total,
-            "last_block": ck.last_block if ck else 0,
+            "last_block": last_block,
+            "head_block": head_block,
             "app_id": current_app.config.get("APP_ID", "hive.micro"),
         }
     )
