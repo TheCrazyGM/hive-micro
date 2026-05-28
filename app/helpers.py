@@ -231,11 +231,20 @@ def markdown_render(content: str) -> str:
 def _get_hive_instance():
     """Return a Hive instance (uses shared instance if configured)."""
     try:
-        hv = Hive(node=current_app.config["HIVE_NODES"])
+        import re
+
+        node_cfg = current_app.config.get("HIVE_NODES", "") or ""
+        # Clean quotes and split by comma or semicolon
+        node_list = [
+            n.strip().strip("'\"").strip()
+            for n in re.split(r",|;", node_cfg)
+            if n.strip().strip("'\"").strip()
+        ]
+        hv = Hive(node=node_list if node_list else None)
         try:
             current_app.logger.info(
                 "[watcher] initialized Hive instance with custom nodes: %s",
-                current_app.config.get("HIVE_NODES"),
+                node_list,
             )
         except Exception:
             pass
@@ -249,6 +258,17 @@ def _get_hive_instance():
         except Exception:
             pass
         return Hive()
+
+
+def reset_node_errors(hv: Hive) -> None:
+    """Reset error counts for all node connections on the given Hive instance."""
+    try:
+        if hasattr(hv, "rpc") and hasattr(hv.rpc, "nodes"):
+            for node in hv.rpc.nodes:
+                node.error_cnt = 0
+                node.error_cnt_call = 0
+    except Exception:
+        pass
 
 
 def _get_head_block_num(hv: Hive) -> int:
@@ -972,6 +992,10 @@ def _watcher_loop(app, stop_event: threading.Event, poll_interval: float = 3.0):
                     time.sleep(sleep_single)
             except Exception:
                 # Backoff on errors
+                try:
+                    reset_node_errors(hv)
+                except Exception:
+                    pass
                 try:
                     current_app.logger.exception("[watcher] error in loop; backing off")
                 except Exception:
