@@ -19,3 +19,6 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pre-commit>=4.3.0", "ruff>=0.12.9"]
+
+[tool.uv.sources]
+hive-nectar = { git = "https://github.com/srbde/hive-nectar", rev = "main" }
