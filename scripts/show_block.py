@@ -33,6 +33,7 @@ from nectar.block import Blocks
 from nectar.hive import Hive
 
 from app import create_app
+from app.helpers import _get_block
 
 
 def _get_hive(app) -> Hive:
@@ -90,7 +91,7 @@ def main():
             print("You must provide --block or --from-bulk-start", file=sys.stderr)
             sys.exit(1)
 
-        full_block: Dict[str, Any] = hv.rpc.get_block(block_num) or {}
+        full_block: Dict[str, Any] = _get_block(hv, block_num) or {}
         if args.compact:
             print(json.dumps(full_block, ensure_ascii=False))
         else:

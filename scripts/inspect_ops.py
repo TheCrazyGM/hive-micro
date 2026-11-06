@@ -32,6 +32,7 @@ from nectar.block import Blocks
 from nectar.hive import Hive
 
 from app import create_app
+from app.helpers import _get_block
 
 
 def _get_hive(app) -> Hive:
@@ -97,7 +98,7 @@ def collect_full_blocks(
 ) -> List[Dict[str, Any]]:
     res: List[Dict[str, Any]] = []
     for bn in range(start, start + count):
-        blk = hv.rpc.get_block(bn) or {}
+        blk = _get_block(hv, bn) or {}
         txs = blk.get("transactions", []) or []
         entry: Dict[str, Any] = {"block_num": bn, "ops": []}
         for tx_idx, tx in enumerate(txs):
