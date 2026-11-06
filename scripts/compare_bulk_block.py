@@ -34,6 +34,7 @@ from nectar.block import Blocks
 from nectar.hive import Hive
 
 from app import create_app
+from app.helpers import _get_block
 
 
 def _get_hive(app) -> Hive:
@@ -119,7 +120,7 @@ def main():
         # Collect full RPC view for same blocks
         full_view: Dict[int, Dict[str, Any]] = {}
         for bn in range(start, start + args.count):
-            blk = hv.rpc.get_block(bn) or {}
+            blk = _get_block(hv, bn) or {}
             txs = blk.get("transactions", []) or []
             ops_list = []
             for tx in txs:

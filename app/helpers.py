@@ -277,6 +277,30 @@ def _get_head_block_num(hv: Hive) -> int:
     return props.get("head_block_number") or props.get("last_irreversible_block_num")
 
 
+def _get_block(hv: Hive, block_num: int) -> dict | None:
+    """Fetch a block by number from Hive RPC.
+
+    Handles block_api object parameter format ({"block_num": block_num})
+    and falls back to condenser_api if needed, unwrapping nested 'block' structure.
+    """
+    if not hv.rpc:
+        return None
+    blk = None
+    try:
+        blk = hv.rpc.get_block({"block_num": block_num})
+    except Exception:
+        try:
+            blk = hv.rpc.get_block(block_num, api="condenser_api")
+        except Exception:
+            return None
+
+    if not blk:
+        return None
+    if isinstance(blk, dict) and "block" in blk:
+        blk = blk["block"]
+    return blk if isinstance(blk, dict) and blk else None
+
+
 def _ops_map_for_block(
     hv: Hive, bn: int, app_id: str
 ) -> tuple[dict[tuple[str, str], list[str]], list[str]]:
@@ -358,7 +382,7 @@ def _ops_map_for_block(
 
     # Fallback: full block
     try:
-        full_blk = hv.rpc.get_block(bn) or {}
+        full_blk = _get_block(hv, bn) or {}
         txs = full_blk.get("transactions", []) or []
         for tx in txs:
             try:
@@ -631,7 +655,7 @@ def _ingest_custom_json_op(
 
 
 def _ingest_block(hv: Hive, block_num: int):
-    blk = hv.rpc.get_block(block_num)
+    blk = _get_block(hv, block_num)
     if not blk:
         return 0
     # Unwrap if nested (e.g. from get_block)

@@ -37,6 +37,7 @@ from nectar.hive import Hive
 from dotenv import load_dotenv
 
 from app import create_app
+from app.helpers import _get_block
 from app.models import db, Message
 
 SYNTH_TRX_RE = re.compile(r"^\d+-\d+-\d+$")
@@ -211,7 +212,7 @@ def normalize_trx_ids(
                             bn2, txi2, _opi2 = dec
                             try:
                                 if bn2 not in full_blk_cache:
-                                    full_blk_cache[bn2] = hv.rpc.get_block(bn2) or {}
+                                    full_blk_cache[bn2] = _get_block(hv, bn2) or {}
                                 txs2 = full_blk_cache[bn2].get("transactions", []) or []
                                 if 0 <= txi2 < len(txs2):
                                     real_target = txs2[txi2].get("transaction_id")
@@ -298,7 +299,7 @@ def normalize_trx_ids(
                             if dec and dec[0] == bn:
                                 try:
                                     if full_blk_cache is None:
-                                        full_blk_cache = hv.rpc.get_block(bn) or {}
+                                        full_blk_cache = _get_block(hv, bn) or {}
                                         full_blk_txs = (
                                             full_blk_cache.get("transactions", []) or []
                                         )
@@ -427,7 +428,7 @@ def normalize_trx_ids(
                         bn2, txi2, _opi2 = dec
                         try:
                             if bn2 not in full_blk_cache:
-                                full_blk_cache[bn2] = hv.rpc.get_block(bn2) or {}
+                                full_blk_cache[bn2] = _get_block(hv, bn2) or {}
                             txs2 = full_blk_cache[bn2].get("transactions", []) or []
                             if 0 <= txi2 < len(txs2):
                                 real_target = txs2[txi2].get("transaction_id")
